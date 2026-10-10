@@ -220,7 +220,7 @@ function App() {
           <div className="project-kicker"><span className="project-kicker-line" /> NHÓM 8</div>
           <h1>ỨNG DỤNG CPDLC- DCL TRONG QUẢN LÝ LUỒNG KHÔNG LƯU TẠI CẢNG HÀNG KHÔNG SÂN BAY TÂN SƠN NHẤT</h1>
           <div className="project-advisor"><span>Giảng viên hướng dẫn:</span> <strong>Nguyễn Ngọc Hoàng Quân</strong></div>
-          <div className="project-authors"><strong>Châu Ngọc Xuân <span>2331710004</span></strong><strong>Nguyễn Doãn Phương <span>2331710008</span></strong><strong>Phan Ngọc Trâm <span>2331710044</span></strong></div>
+          <div className="project-authors"><strong>Châu Ngọc Xuân <span>2331710004</span></strong><strong>Nguyễn Doãn Phương <span>2331710008</span></strong><strong>Phan Ngọc Trâm <span>2331710044</span></strong><strong>Dương Thị Hương Thảo <span>2331710038</span></strong></div>
         </div>
         <div className="project-hero-meta"><span className="project-class">LỚP <b>23ĐHKL01</b></span></div>
       </section>

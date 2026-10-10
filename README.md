@@ -14,6 +14,7 @@
 | Châu Ngọc Xuân | 2331710004 |
 | Nguyễn Doãn Phương | 2331710008 |
 | Phan Ngọc Trâm | 2331710044 |
+| Dương Thị Hương Thảo | 2331710038 |
 
 ## Tính năng chính
 
