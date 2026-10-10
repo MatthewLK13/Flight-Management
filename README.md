@@ -7,7 +7,7 @@
 ## Thông tin đề tài
 
 **Nhóm 8 · Lớp 23ĐHKL01**  
-**Giảng viên hướng dẫn:** TS. Nguyễn Thị Linh Phương
+**Giảng viên hướng dẫn:** Nguyễn Ngọc Hoàng Quân
 
 | Thành viên | Mã số sinh viên |
 | --- | --- |
