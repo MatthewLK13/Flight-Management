@@ -17,7 +17,7 @@ const SAMPLE_FILES = [
   { id: '3d', label: 'Bộ dữ liệu 3 ngày', dates: '03–05.11.2023', filename: 'Số liệu 3 ngày từ  03.11.23  đến 05.11.23.xls', url: '/samples/3-days.xls' },
 ];
 const RUNWAYS = [
-  { id: '25L-25R', label: '25L / 25R', detail: 'Cấu hình mặc định · hướng Tây Nam' },
+  { id: '25L-25R', label: '25L / 25R' },
 ];
 const speeds = [1, 10, 30, 60];
 const fmtTime = (time: number) => new Date(time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -212,7 +212,7 @@ function App() {
           <span><strong>FLIGHT OPS</strong><small>TSN · DEPARTURE FLOW</small></span>
         </a>
         <div className="airport-indicator"><span className="live-dot" />TÂN SƠN NHẤT <span className="code-pill">VVTS</span></div>
-        <div className="topbar-actions"><span className="demo-tag"><span /> CHẾ ĐỘ MÔ PHỎNG</span><button className="icon-button" aria-label="Cài đặt mô phỏng"><Settings2 size={18} /></button><span className="avatar">OPS</span></div>
+        <div className="topbar-actions"><button className="icon-button" aria-label="Cài đặt mô phỏng"><Settings2 size={18} /></button><span className="avatar">OPS</span></div>
       </header>
 
       <section className="project-hero" id="top" aria-label="Thông tin đồ án">
@@ -232,16 +232,15 @@ function App() {
             <label className="select-wrap"><FileSpreadsheet size={16} /><select aria-label="Bộ dữ liệu mẫu" value={selectedSource} onChange={(event) => { if (event.target.value === 'custom' && customWorkbook.current) { ++activeLoad.current; useWorkbook(customWorkbook.current, 'custom'); } else void selectSample(event.target.value); }}>{SAMPLE_FILES.map((sample) => <option value={sample.id} key={sample.id}>{sample.label} · {sample.dates}</option>)}{customWorkbook.current && <option value="custom">Tệp mới: {customWorkbook.current.file.name}</option>}</select><ChevronDown size={15} /></label>
             <button className="button-secondary" onClick={() => void openWorkbook()} disabled={busy}>{busy ? <span className="spinner" /> : <FileSpreadsheet size={16} />} Tải tệp mới</button>
           </div>
-          <div className="source-path">{selectedSource === 'custom' ? imported?.file.name : SAMPLE_FILES.find((item) => item.id === selectedSource)?.filename}</div>
           <input ref={fileInput} type="file" accept=".xls,.xlsx,.csv" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void loadWorkbook(file); event.currentTarget.value = ''; }} />
         </div>
         <div className="control-divider" />
         <label className="control-field"><span className="control-label">NGÀY KHAI THÁC</span><span className="select-wrap"><CalendarDays size={16} /><input aria-label="Ngày khai thác" type="date" value={day} onChange={(event) => setDay(event.target.value)} /><ChevronDown size={15} /></span></label>
-        <label className="control-field runway-field"><span className="control-label">CẤU HÌNH ĐƯỜNG BĂNG</span><span className="select-wrap"><Layers3 size={16} /><select aria-label="Cấu hình đường băng" value={runway} onChange={(event) => setRunway(event.target.value)}>{RUNWAYS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><ChevronDown size={15} /></span><span className="field-hint">{RUNWAYS.find((item) => item.id === runway)?.detail}</span></label>
+        <label className="control-field runway-field"><span className="control-label">CẤU HÌNH ĐƯỜNG BĂNG</span><span className="select-wrap"><Layers3 size={16} /><select aria-label="Cấu hình đường băng" value={runway} onChange={(event) => setRunway(event.target.value)}>{RUNWAYS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><ChevronDown size={15} /></span></label>
         <button className="button-primary" onClick={runDay} disabled={!imported || busy}>{busy ? <span className="spinner light" /> : <Play size={16} fill="currentColor" />} Chạy mô phỏng</button>
         <button className={`save-button ${writeState === 'saved' ? 'is-saved' : ''}`} onClick={saveWorkbook} disabled={!imported?.handle || writeState === 'saved'} title={imported?.handle ? 'Ghi trường mô phỏng vào chính workbook đã tải lên' : 'Dữ liệu mẫu tích hợp chỉ đọc; tải tệp mới để ghi trực tiếp'}>{writeState === 'saved' ? <Check size={15} /> : <FileSpreadsheet size={15} />}{writeState === 'saved' ? 'Đã lưu' : 'Ghi vào workbook'}</button>
       </section>
-      <div className={`notice ${message.startsWith('Lỗi') || message.startsWith('Không') ? 'notice-error' : ''}`} role="status"><Info size={15} /><span>{message}</span>{imported && <span className="notice-file">{imported.file.name}</span>}</div>
+      {(message.startsWith('Lỗi') || message.startsWith('Không thể') || message.startsWith('Không tải được') || message.startsWith('Không tìm thấy')) && <div className="notice notice-error" role="alert"><Info size={15} /><span>{message}</span></div>}
 
       <section className="playback-bar" aria-label="Điều khiển phát lại">
         <div className="playback-label"><span className={`playback-dot ${playing ? 'active' : ''}`} /><span>{playing ? 'ĐANG PHÁT' : 'PHÁT LẠI 24 GIỜ'}</span></div>
@@ -303,7 +302,7 @@ function App() {
         </section>
 
         <section className="panel dcl-panel" aria-label="Bản tin DCL">
-          <div className="panel-heading"><div><h2>Bản tin DCL</h2></div><span className="dcl-protocol"><Radio size={14} /> MÔ PHỎNG</span></div>
+          <div className="panel-heading"><div><h2>Bản tin DCL</h2></div></div>
           <div className="dcl-body">
             <table className="dcl-board" aria-label="Bảng điện văn DCL">
               <thead><tr><th>GIỜ LT</th><th>LUỒNG</th><th>ĐIỆN VĂN</th><th>KẾT QUẢ</th></tr></thead>
@@ -333,7 +332,7 @@ function App() {
 
       <div className="queue-grid">
         <section className="panel queue-panel" aria-label="Hàng chờ cất cánh">
-          <div className="panel-heading queue-heading"><div><div className="panel-kicker">ĐIỀU PHỐI REAL-TIME</div><h2>Hàng chờ cất cánh</h2></div><span className={`queue-live ${playing ? 'on' : ''}`}><span />{playing ? 'LIVE' : 'ĐANG CHỜ'}</span></div>
+          <div className="panel-heading queue-heading"><div><h2>Hàng chờ cất cánh</h2></div><span className={`queue-live ${playing ? 'on' : ''}`}><span />{playing ? 'LIVE' : 'ĐANG CHỜ'}</span></div>
           <div className="queue-toolbar"><div className="search-box"><Search size={15} /><input aria-label="Tìm chuyến bay" placeholder="Tìm callsign, stand…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select aria-label="Lọc hàng chờ" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">Tất cả chuyến</option><option value="moving">Đang lăn</option><option value="missed">Lỡ CTOT</option></select><button className="icon-button filter-icon" aria-label="Bộ lọc nâng cao"><SlidersHorizontal size={15} /></button></div>
           <div className="table-scroll"><table><thead><tr><th>#</th><th>CALLSIGN / LOẠI TÀU BAY</th><th>STAND</th><th>CTOT</th><th>TRẠNG THÁI</th></tr></thead><tbody>
             {visibleFlights.slice(0, 90).map((flight) => <tr key={flight.id} className={selectedFlight === flight.callsign ? 'selected-row' : ''} onClick={() => setSelectedFlight(flight.callsign)}>
