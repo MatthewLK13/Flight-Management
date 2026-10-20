@@ -45,7 +45,7 @@
 .workspace-grid>.map-panel,.workspace-grid>.dcl-panel{height:var(--workspace-panel-height);min-height:0}
 .map-panel{display:flex;flex-direction:column}
 .map-panel .map-wrap{flex:1;height:auto;min-height:0}
-.map-canvas{aspect-ratio:2080/905}
+.map-canvas{aspect-ratio:1901/1312}
 .aircraft-marker.arrival path{fill:#7c3aed}
 .aircraft-marker.arrival .marker-halo{fill:#a78bfa;opacity:.42}
 .legend-dot.arrival-aircraft{background:#7c3aed;box-shadow:0 0 0 3px #7c3aed24}

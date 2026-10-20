@@ -297,7 +297,7 @@ function App() {
           <div className="panel-heading"><div><div className="panel-kicker">SƠ ĐỒ ĐƯỜNG LĂN · VVTS</div><h2>Sơ đồ khai thác <span className="heading-count">{flights.length || arrivals.length ? `${fmtNumber(flights.length)} đi · ${fmtNumber(arrivals.length)} đến` : '—'}</span></h2></div><div className="map-actions"><button className="icon-button" aria-label="Thu nhỏ bản đồ" onClick={() => setZoom(Math.max(.8, zoom - .15))}><ZoomOut size={16} /></button><span className="zoom-value">{Math.round(zoom * 100)}%</span><button className="icon-button" aria-label="Phóng to bản đồ" onClick={() => setZoom(Math.min(1.5, zoom + .15))}><ZoomIn size={16} /></button><span className="map-action-sep" /><button className="icon-button" aria-label="Đặt lại bản đồ" onClick={() => { setZoom(1); mapScroller.current?.scrollTo({ left: 0, top: 0 }); }}><RotateCcw size={16} /></button></div></div>
           <div className="map-wrap" ref={mapScroller}>
             <div className="map-canvas" style={{ transform: `scale(${zoom})` }}>
-              <img src="/assets/airfield-map.png" alt="Sơ đồ đường băng, đường lăn và vị trí đỗ Tân Sơn Nhất" draggable={false} />
+              <img src="/assets/PARKING_CHART_clean.png" alt="Sơ đồ đường băng, đường lăn và vị trí đỗ Tân Sơn Nhất" draggable={false} />
               <svg className="map-overlay" viewBox={MAP_VIEWBOX} role="img" aria-label="Sơ đồ tàu bay đi và đến">
                 <g className="holding-marker" aria-label="Điểm chờ S1 trước đường băng 25L">
                   <circle cx={holdingPoint.x} cy={holdingPoint.y} r="10" />
