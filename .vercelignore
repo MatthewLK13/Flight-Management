@@ -1,0 +1,6 @@
+.serena/
+repomix.md
+public/assets/*.pdf
+node_modules/
+dist/
+.vercel/
