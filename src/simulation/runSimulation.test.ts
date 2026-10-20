@@ -42,6 +42,20 @@ describe('holding point queue', () => {
   });
 });
 
+describe('wake category separation', () => {
+  it('keeps a Medium aircraft between every pair of Heavy departures', () => {
+    const flights = toScheduledFlights([
+      { CallSign: 'H1', PlaneTypeCode: 'B788', ScheduledDeparture: '2023-11-03T08:00:00Z', CTOT: '2023-11-03T08:00:00Z', TaxiMinutes: 4 },
+      { CallSign: 'H2', PlaneTypeCode: 'A350', ScheduledDeparture: '2023-11-03T08:00:00Z', CTOT: '2023-11-03T08:00:00Z', TaxiMinutes: 4 },
+      { CallSign: 'M1', PlaneTypeCode: 'A320', ScheduledDeparture: '2023-11-03T08:00:00Z', CTOT: '2023-11-03T08:00:00Z', TaxiMinutes: 4 },
+    ]);
+    const result = runSimulation(flights);
+    for (let index = 1; index < result.flights.length; index += 1) {
+      expect(result.flights[index - 1].wakeCategory === 'H' && result.flights[index].wakeCategory === 'H').toBe(false);
+    }
+  });
+});
+
 
 describe('baseline comparison', () => {
   it('keeps the proposed schedule no worse than the baseline wait objective', () => {

@@ -1,5 +1,5 @@
 export type DclEvent = { id: string; time: number; callsign: string; direction: string; message: string; status: 'OK' | 'TỪ CHỐI' | 'TIMEOUT' };
-export type DclContext = { origin?: string; destination?: string; stand?: string; aircraftType?: string; runway?: string; ctot?: number };
+export type DclContext = { origin?: string; destination?: string; stand?: string; aircraftType?: string; runway?: string; tsat?: number };
 
 /** Lay out each simulated telegram in the same field groups as the DCL examples. */
 export function formatDclMessage(message: string): string[] {
@@ -13,17 +13,17 @@ export function formatDclMessage(message: string): string[] {
     const body = match[5];
     if (body === 'RCD RECEIVED REQUEST BEING PROCESSED STANDBY') return [header, `${match[4]} RCD RECEIVED`, 'REQUEST BEING PROCESSED', 'STANDBY'];
     if (body === 'RCD REJECTED REVERT TO VOICE PROCEDURES') return [header, `${match[4]} RCD REJECTED`, 'REVERT TO VOICE PROCEDURES'];
-    if (body.startsWith('CTOT REVISED ')) return [header, `${match[4]} CTOT REVISED`, body.slice('CTOT REVISED '.length)];
+    if (body.startsWith('TSAT REVISED ')) return [header, `${match[4]} TSAT REVISED`, body.slice('TSAT REVISED '.length)];
     return [header, `${match[4]} ${body}`];
   }
 
-  match = text.match(/^CLD (\d{4}) (\d{6}) ([A-Z]{4}) (PDC \d+) (\S+) CLRD TO (\S+) OFF (\S+) VIA (.+?) SQUAWK (\d+)(?: CTOT (\d{4}))?$/);
+  match = text.match(/^CLD (\d{4}) (\d{6}) ([A-Z]{4}) (PDC \d+) (\S+) CLRD TO (\S+) OFF (\S+) VIA (.+?) SQUAWK (\d+)(?: TSAT (\d{4}))?$/);
   if (match) return [
     `CLD ${match[1]} ${match[2]} ${match[3]} ${match[4]}`,
     `${match[5]} CLRD TO ${match[6]} OFF`,
     `${match[7]} VIA ${match[8]}`,
     `SQUAWK ${match[9]}`,
-    ...(match[10] ? [`CTOT ${match[10]}`] : []),
+    ...(match[10] ? [`TSAT ${match[10]}`] : []),
   ];
 
   match = text.match(/^RCD (\S+)-([A-Z]{4})-STAND (\S+)-([A-Z]{4}) ATIS ([A-Z])-TYP\/(.+?)-RMK\/(.*)$/);
@@ -36,8 +36,8 @@ export function formatDclMessage(message: string): string[] {
   return [text];
 }
 
-const hhmm = (time: number) => new Date(time).toISOString().slice(11, 16).replace(':', '');
-const ddmmyy = (time: number) => { const d = new Date(time); return `${String(d.getUTCDate()).padStart(2, '0')}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCFullYear()).slice(-2)}`; };
+const hhmm = (time: number) => { const date = new Date(time); return `${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}`; };
+const ddmmyy = (time: number) => { const date = new Date(time); return `${String(date.getDate()).padStart(2, '0')}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getFullYear()).slice(-2)}`; };
 
 export function createDclEvents(callsign: string, baseTime: number, seed: number, context: DclContext = {}): DclEvent[] {
   const origin = context.origin || 'VVTS';
@@ -45,7 +45,7 @@ export function createDclEvents(callsign: string, baseTime: number, seed: number
   const aircraftType = context.aircraftType || 'A320';
   const stand = context.stand || '12';
   const runway = context.runway?.split('-')[0] || '25L';
-  const slot = context.ctot ? hhmm(context.ctot) : hhmm(baseTime + 10 * 60_000);
+  const slot = context.tsat ? hhmm(context.tsat) : hhmm(baseTime);
   const exceptional = seed % 13 === 0;
   const events: DclEvent[] = [
     { id: `${callsign}-rcd`, time: baseTime, callsign, direction: 'Tổ lái → Hệ thống', message: `RCD ${callsign}-${origin}-STAND ${stand}-${destination} ATIS B-TYP/${aircraftType}-RMK/`, status: 'OK' },
@@ -57,7 +57,7 @@ export function createDclEvents(callsign: string, baseTime: number, seed: number
   }
   const clearanceTime = baseTime + (exceptional ? 120_000 : 40_000);
   events.push(
-    { id: `${callsign}-cld`, time: clearanceTime, callsign, direction: 'Hệ thống → Tổ lái', message: `CLD ${hhmm(clearanceTime)} ${ddmmyy(baseTime)} ${origin} PDC 001 ${callsign} CLRD TO ${destination} OFF ${runway} VIA SID DEMO1 SQUAWK 2201 CTOT ${slot}`, status: 'OK' },
+    { id: `${callsign}-cld`, time: clearanceTime, callsign, direction: 'Hệ thống → Tổ lái', message: `CLD ${hhmm(clearanceTime)} ${ddmmyy(baseTime)} ${origin} PDC 001 ${callsign} CLRD TO ${destination} OFF ${runway} VIA SID DEMO1 SQUAWK 2201 TSAT ${slot}`, status: 'OK' },
     { id: `${callsign}-cda`, time: clearanceTime + 25_000, callsign, direction: 'Tổ lái → Hệ thống', message: `CDA ${hhmm(clearanceTime + 25_000)} ${ddmmyy(baseTime)} ${origin} ${callsign} CDA RECEIVED CLEARANCE CONFIRMED`, status: 'OK' },
   );
   return events;

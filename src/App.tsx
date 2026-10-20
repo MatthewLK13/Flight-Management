@@ -6,13 +6,16 @@ import {
 } from 'lucide-react';
 import './styles/app.css';
 import { readFlightFile, writeFlightFile, type ImportedWorkbook } from './data/workbook';
-import { isDepartureFromTsn, toDayString } from './data/enrichFlights';
+import { isArrivalAtTsn, isDepartureFromTsn, toDayString } from './data/enrichFlights';
 import { createDclEvents, formatDclMessage, type DclEvent } from './dcl/dclScenario';
-import { runSimulation, toScheduledFlights, TAKEOFF_ROLL_MS, type SimulationResult, type TimelineItem } from './simulation/runSimulation';
-import { getHoldingPoint, getRunwaySegment, getStandPoint, getTaxiRouteDescription, getTaxiRoutePoints, pointAlongPath } from './map/parkingGeometry';
+import { runSimulation, toScheduledFlights, type SimulationResult, type TimelineItem } from './simulation/runSimulation';
+import { getHoldingPoint, getRunwaySegment, getTaxiRouteDescription, MAP_VIEWBOX } from './map/airfieldGeometry';
+import { arrivalPosition, departurePosition, TAKEOFF_VISIBLE_AFTER_MS } from './map/playback';
+import { scheduleArrivals, type ArrivalTimelineItem } from './simulation/arrivals';
 
 type FilePickerWindow = Window & { showOpenFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle[]> };
 const SAMPLE_FILES = [
+  { id: 'cd', label: 'Chuyên đề · tàu đi và đến', dates: '01.10.2026', filename: 'Chuyên đề.xlsx', url: '/samples/chuyen-de.xlsx' },
   { id: '7d', label: 'Bộ dữ liệu 7 ngày', dates: '01–07.11.2023', filename: 'Số liệu 7 ngày từ  01.11.23  đến 07.11.23.xls', url: '/samples/7-days.xls' },
   { id: '3d', label: 'Bộ dữ liệu 3 ngày', dates: '03–05.11.2023', filename: 'Số liệu 3 ngày từ  03.11.23  đến 05.11.23.xls', url: '/samples/3-days.xls' },
 ];
@@ -28,6 +31,7 @@ const seeded = (text: string) => [...text].reduce((a, c) => Math.imul(a ^ c.char
 function App() {
   const [imported, setImported] = useState<ImportedWorkbook | null>(null);
   const [flights, setFlights] = useState<TimelineItem[]>([]);
+  const [arrivals, setArrivals] = useState<ArrivalTimelineItem[]>([]);
   const [proposed, setProposed] = useState<SimulationResult | null>(null);
   const [events, setEvents] = useState<DclEvent[]>([]);
   const [selectedFlight, setSelectedFlight] = useState<string | null>(null);
@@ -38,7 +42,7 @@ function App() {
   const [playing, setPlaying] = useState(false);
   const [minute, setMinute] = useState(300);
   const [search, setSearch] = useState('');
-  const [message, setMessage] = useState('Đang nạp bộ dữ liệu 7 ngày có sẵn…');
+  const [message, setMessage] = useState('Đang nạp dữ liệu chuyến đi và đến…');
   const [busy, setBusy] = useState(false);
   const [writeState, setWriteState] = useState<'clean' | 'dirty' | 'saved'>('clean');
   const [zoom, setZoom] = useState(1);
@@ -51,19 +55,19 @@ function App() {
   const activeLoad = useRef(0);
 
   function useWorkbook(next: ImportedWorkbook, source: string) {
-    const outbound = next.enrichedRows.filter(isDepartureFromTsn);
+    const movements = next.enrichedRows.filter((row) => isDepartureFromTsn(row) || isArrivalAtTsn(row));
     const dateCounts = new Map<string, number>();
-    for (const row of outbound) {
+    for (const row of movements) {
       const normalized = toDayString(row.FlyDate ?? row.Date);
       dateCounts.set(normalized, (dateCounts.get(normalized) ?? 0) + 1);
     }
     const activeDay = [...dateCounts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '2023-11-03';
-    const dailyRows = outbound.filter((row) => toDayString(row.FlyDate ?? row.Date) === activeDay);
-    if (!dailyRows.length) throw new Error('Không tìm thấy chuyến khởi hành từ VVTS trong dữ liệu này.');
+    const dailyRows = movements.filter((row) => toDayString(row.FlyDate ?? row.Date) === activeDay);
+    if (!dailyRows.length) throw new Error('Không tìm thấy chuyến đi hoặc đến VVTS trong dữ liệu này.');
     setImported(next); setSelectedSource(source); setDay(activeDay);
-    setFlights([]); setProposed(null); setEvents([]); setPlaying(false); setMinute(0);
+    setFlights([]); setArrivals([]); setProposed(null); setEvents([]); setPlaying(false); setMinute(0);
     setWriteState(next.handle ? 'dirty' : 'clean');
-    setMessage(`Đã sẵn sàng ${next.file.name} · ${fmtNumber(next.sourceRows.length)} dòng nguồn · ${fmtNumber(dailyRows.length)} chuyến VVTS ngày ${activeDay}.`);
+    setMessage(`Đã sẵn sàng ${next.file.name} · ${fmtNumber(dailyRows.filter(isDepartureFromTsn).length)} chuyến đi · ${fmtNumber(dailyRows.filter(isArrivalAtTsn).length)} chuyến đến.`);
   }
 
   function fetchSample(id: string): Promise<ImportedWorkbook> {
@@ -76,7 +80,7 @@ function App() {
     const request = (async () => {
       const response = await fetch(sample.url);
       if (!response.ok) throw new Error(`Không tải được ${sample.filename} (${response.status}).`);
-      const file = new File([await response.blob()], sample.filename, { type: 'application/vnd.ms-excel' });
+      const file = new File([await response.blob()], sample.filename, { type: sample.filename.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.ms-excel' });
       const workbook = await readFlightFile(file);
       sampleCache.current.set(id, workbook);
       return workbook;
@@ -101,7 +105,7 @@ function App() {
   }
 
   useEffect(() => {
-    void selectSample('7d').then(() => { void fetchSample('3d').catch(() => undefined); });
+    void selectSample('cd').then(() => { void fetchSample('7d').catch(() => undefined); });
   }, []);
 
   async function openWorkbook() {
@@ -136,49 +140,86 @@ function App() {
 
   const currentSchedule = useMemo(() => imported?.enrichedRows.filter(isDepartureFromTsn) ?? [], [imported]);
   const dailySchedule = useMemo(() => currentSchedule.filter((row) => toDayString(row.FlyDate ?? row.Date) === day), [currentSchedule, day]);
+  const dailyArrivals = useMemo(() => imported?.enrichedRows.filter((row) => isArrivalAtTsn(row) && toDayString(row.FlyDate ?? row.Date) === day) ?? [], [imported, day]);
   const holdingPoint = getHoldingPoint(runway);
-  const holdingX = holdingPoint.x;
   const runwaySegment = getRunwaySegment(runway);
-  const activeRunwayName = runway === '25L-25R' ? 'RWY 25L' : 'RWY 07R';
   const timeCursor = new Date(day + 'T00:00:00').getTime() + minute * 60_000;
   const dayStart = new Date(day + 'T00:00:00').getTime();
-  const playbackEndMinute = Math.max(1440, Math.ceil(((flights.at(-1)?.wheelsOff ?? dayStart + 1440 * 60_000) - dayStart) / 600_000) * 10);
+  const latestMovement = Math.max(flights.at(-1)?.wheelsOff ?? 0, ...arrivals.map((flight) => flight.standArrival), 0);
+  const playbackEndMinute = Math.max(1440, Math.ceil(((latestMovement || dayStart + 1440 * 60_000) - dayStart) / 600_000) * 10);
   const playbackEndLabel = playbackEndMinute <= 1440
     ? '24:00'
     : `${String(Math.floor((playbackEndMinute - 1440) / 60)).padStart(2, '0')}:${String((playbackEndMinute - 1440) % 60).padStart(2, '0')} +1 ngày`;
   const holdingQueue = flights
-    .filter((flight) => timeCursor >= flight.taxiStart + flight.taxiMinutes * 60_000 && timeCursor < flight.runwayEntryStart)
+    .filter((flight) => timeCursor >= (flight.secondTaxiStart ?? flight.taxiStart) + flight.taxiMinutes * 60_000 && timeCursor < flight.runwayEntryStart)
     .sort((a, b) => a.order - b.order);
   function runDay() {
     if (!imported) { setMessage('Hãy chọn workbook trước khi chạy mô phỏng.'); return; }
     setBusy(true);
     window.setTimeout(() => {
-      const rows = dailySchedule;
-      const schedule = toScheduledFlights(rows);
-      const improved = runSimulation(schedule, true);
-      setProposed(improved); setFlights(improved.flights);
-      if (imported) {
-        const resultsByRow = new Map(improved.flights.map((flight) => [flight.row, flight]));
+      try {
+        const schedule = toScheduledFlights(dailySchedule);
+        const improved = runSimulation(schedule, true);
+        const inbound = scheduleArrivals(dailyArrivals, improved.flights);
+        setProposed(improved); setFlights(improved.flights); setArrivals(inbound);
+        const departuresByRow = new Map(improved.flights.map((flight) => [flight.row, flight]));
+        const arrivalsByRow = new Map(inbound.map((flight) => [flight.row, flight]));
         const updatedRows = imported.enrichedRows.map((row) => {
-          const outcome = resultsByRow.get(row);
-          return outcome ? { ...row, ActualTakeoff: new Date(outcome.wheelsOff).toISOString(), RunwayEntry: new Date(outcome.runwayEntryStart).toISOString(), TakeoffRollStart: new Date(outcome.takeoffRollStart).toISOString(), ReissuedCTOT: outcome.reissuedCtot ? new Date(outcome.reissuedCtot).toISOString() : '', QueueOrder: outcome.order, RunwayConfig: runway, TaxiRoute: getTaxiRouteDescription(runway, String(row.Stand ?? '—')) } : row;
+          const departure = departuresByRow.get(row);
+          if (departure) return {
+            ...row, TSAT: new Date(departure.tsat).toISOString(),
+            ActualTakeoff: new Date(departure.wheelsOff).toISOString(),
+            RunwayEntry: new Date(departure.runwayEntryStart).toISOString(),
+            TakeoffRollStart: new Date(departure.takeoffRollStart).toISOString(),
+            ReissuedCTOT: departure.reissuedCtot ? new Date(departure.reissuedCtot).toISOString() : '',
+            ReissuedTSAT: departure.reissuedTsat ? new Date(departure.reissuedTsat).toISOString() : '',
+            ReturnStand: departure.returnStand ?? '', QueueOrder: departure.order,
+            SimulationStatus: departure.status,
+            RunwayConfig: runway, TaxiRoute: getTaxiRouteDescription(runway, String(row.Stand ?? '—')),
+          };
+          const arrival = arrivalsByRow.get(row);
+          return arrival ? {
+            ...row, ActualLanding: new Date(arrival.touchdown).toISOString(),
+            CrossingStart: new Date(arrival.crossingStart).toISOString(),
+            StandArrival: new Date(arrival.standArrival).toISOString(),
+          } : row;
         });
         setImported({ ...imported, enrichedRows: updatedRows });
+        const firstDepartureMovement = Math.min(...improved.flights.map((flight) => flight.readyAt - 45 * 60_000), Infinity);
+        const firstArrivalMovement = Math.min(...inbound.map((flight) => flight.approachStart), Infinity);
+        const firstMovement = Math.min(firstDepartureMovement, firstArrivalMovement);
+        const playbackStart = Number.isFinite(firstMovement) ? Math.max(0, Math.floor((firstMovement - dayStart) / 60_000)) : 0;
+        setMinute(playbackStart); setPlaying(true);
+        const allEvents = improved.flights.flatMap((flight, index) => {
+          const clearanceTime = Math.max(dayStart, flight.tsat - 10 * 60_000);
+          const clearanceEvents = createDclEvents(flight.callsign, clearanceTime, seeded(flight.id) + index, {
+            origin: String(flight.row.AirportDeliveryCode || 'VVTS'),
+            destination: String(flight.row.AirportReceiptCode || 'VVDN'),
+            stand: flight.stand, aircraftType: flight.aircraftType, runway, tsat: flight.tsat,
+          });
+          if (flight.reissuedTsat === null || flight.returnEnd === null) return clearanceEvents;
+          const updateTime = flight.returnEnd;
+          const revisedTsat = new Date(flight.reissuedTsat);
+          const revisedStamp = `${String(revisedTsat.getHours()).padStart(2, '0')}${String(revisedTsat.getMinutes()).padStart(2, '0')}`;
+          const date = new Date(updateTime);
+          const stamp = `${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')} ${String(date.getDate()).padStart(2, '0')}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getFullYear()).slice(-2)}`;
+          return [...clearanceEvents, {
+            id: `${flight.id}-tsat-update`, time: updateTime, callsign: flight.callsign,
+            direction: 'Hệ thống → Tổ lái',
+            message: `FSM ${stamp} VVTS ${flight.callsign} TSAT REVISED ${revisedStamp} RETURNED TO STAND ${flight.returnStand}`,
+            status: 'OK' as const,
+          }];
+        });
+        allEvents.sort((a, b) => a.time - b.time);
+        setEvents(allEvents); setSelectedFlight(improved.flights[0]?.callsign ?? inbound[0]?.callsign ?? null);
+        setWriteState('dirty');
+        setMessage(`Mô phỏng hoàn tất · ${improved.completed} chuyến đi · ${inbound.length} chuyến đến.`);
+      } catch (error) {
+        setMessage(`Lỗi mô phỏng: ${(error as Error).message}`);
+        setPlaying(false);
+      } finally {
+        setBusy(false);
       }
-      setMinute(0); setPlaying(true);
-      const allEvents = improved.flights.flatMap((flight, index) => {
-        const clearanceEvents = createDclEvents(flight.callsign, flight.taxiStart, seeded(flight.id) + index, { origin: String(flight.row.AirportDeliveryCode || 'VVTS'), destination: String(flight.row.AirportReceiptCode || 'VVDN'), stand: flight.stand, aircraftType: flight.aircraftType, runway, ctot: flight.ctot });
-        if (flight.reissuedCtot === null) return clearanceEvents;
-        const updateTime = Math.max(flight.taxiStart + flight.taxiMinutes * 60_000, Math.min(flight.ctot + 10 * 60_000, flight.wheelsOff - 60_000));
-        const revisedSlot = new Date(flight.reissuedCtot).toISOString().slice(11, 16).replace(':', '');
-        const updateDate = new Date(updateTime).toISOString();
-        const updateStamp = `${updateDate.slice(11, 16).replace(':', '')} ${updateDate.slice(8, 10)}${updateDate.slice(5, 7)}${updateDate.slice(2, 4)}`;
-        return [...clearanceEvents, { id: `${flight.id}-ctot-update`, time: updateTime, callsign: flight.callsign, direction: 'Hệ thống → Tổ lái', message: `FSM ${updateStamp} VVTS ${flight.callsign} CTOT REVISED ${revisedSlot} AFTER MISSED ORIGINAL SLOT`, status: 'OK' as const }];
-      });
-      allEvents.sort((a, b) => a.time - b.time);
-      setEvents(allEvents); setSelectedFlight(improved.flights[0]?.callsign ?? null);
-      setWriteState('dirty'); setMessage(`Mô phỏng hoàn tất · ${fmtNumber(improved.completed)} chuyến · ${runway} · lịch đề xuất sẵn sàng phát lại.`);
-      setBusy(false);
     }, 20);
   }
 
@@ -191,16 +232,16 @@ function App() {
   useEffect(() => {
     if (!playing || !proposed) return;
     const interval = window.setInterval(() => setMinute((previous) => {
-      const next = previous + speed / 60;
+      const next = previous + speed / 600;
       if (next >= playbackEndMinute) { setPlaying(false); return playbackEndMinute; }
       return next;
-    }), 1000);
+    }), 100);
     return () => window.clearInterval(interval);
   }, [playing, proposed, speed, playbackEndMinute]);
 
   const visibleFlights = flights.filter((flight) => {
     const matchesSearch = `${flight.callsign} ${flight.aircraftType} ${flight.stand}`.toLowerCase().includes(search.toLowerCase());
-    return matchesSearch && (filter === 'all' || (filter === 'missed' && flight.missedCtot) || (filter === 'moving' && minute * 60_000 >= flight.taxiStart && minute * 60_000 < flight.wheelsOff));
+    return matchesSearch && (filter === 'all' || (filter === 'missed' && flight.missedCtot) || (filter === 'moving' && timeCursor >= flight.taxiStart && timeCursor < flight.wheelsOff));
   });
   const activeEvents = events.filter((event) => event.time <= timeCursor).slice(-8).reverse();
 
@@ -217,7 +258,7 @@ function App() {
 
       <section className="project-hero" id="top" aria-label="Thông tin đồ án">
         <div className="project-hero-copy">
-          <div className="project-kicker"><span className="project-kicker-line" /> NHÓM 8</div>
+          <div className="project-kicker"><span className="project-kicker-line" /> NHÓM 5</div>
           <h1>ỨNG DỤNG CPDLC- DCL TRONG QUẢN LÝ LUỒNG KHÔNG LƯU TẠI CẢNG HÀNG KHÔNG SÂN BAY TÂN SƠN NHẤT</h1>
           <div className="project-advisor"><span>Giảng viên hướng dẫn:</span> <strong>Nguyễn Ngọc Hoàng Quân</strong></div>
           <div className="project-authors"><strong>Châu Ngọc Xuân <span>2331710004</span></strong><strong>Nguyễn Doãn Phương <span>2331710008</span></strong><strong>Phan Ngọc Trâm <span>2331710044</span></strong><strong>Dương Thị Hương Thảo <span>2331710038</span></strong></div>
@@ -227,7 +268,7 @@ function App() {
 
       <section className="control-panel" aria-label="Thiết lập mô phỏng">
         <div className="control-source">
-          <div className="control-label">NGUỒN DỮ LIỆU <span className="tiny-info" title="Hai bộ mẫu có sẵn; tệp mới được tải riêng">i</span></div>
+          <div className="control-label">NGUỒN DỮ LIỆU <span className="tiny-info" title="Ba bộ mẫu có sẵn; tệp mới được tải riêng">i</span></div>
           <div className="source-picker">
             <label className="select-wrap"><FileSpreadsheet size={16} /><select aria-label="Bộ dữ liệu mẫu" value={selectedSource} onChange={(event) => { if (event.target.value === 'custom' && customWorkbook.current) { ++activeLoad.current; useWorkbook(customWorkbook.current, 'custom'); } else void selectSample(event.target.value); }}>{SAMPLE_FILES.map((sample) => <option value={sample.id} key={sample.id}>{sample.label} · {sample.dates}</option>)}{customWorkbook.current && <option value="custom">Tệp mới: {customWorkbook.current.file.name}</option>}</select><ChevronDown size={15} /></label>
             <button className="button-secondary" onClick={() => void openWorkbook()} disabled={busy}>{busy ? <span className="spinner" /> : <FileSpreadsheet size={16} />} Tải tệp mới</button>
@@ -253,52 +294,55 @@ function App() {
 
       <div className="workspace-grid">
         <section className="panel map-panel" aria-label="PARKING CHART">
-          <div className="panel-heading"><div><div className="panel-kicker">SƠ ĐỒ SÂN ĐỖ · VVTS</div><h2>PARKING CHART <span className="heading-count">{flights.length ? fmtNumber(flights.length) : '—'} chuyến</span></h2></div><div className="map-actions"><button className="icon-button" aria-label="Thu nhỏ bản đồ" onClick={() => setZoom(Math.max(.8, zoom - .15))}><ZoomOut size={16} /></button><span className="zoom-value">{Math.round(zoom * 100)}%</span><button className="icon-button" aria-label="Phóng to bản đồ" onClick={() => setZoom(Math.min(1.5, zoom + .15))}><ZoomIn size={16} /></button><span className="map-action-sep" /><button className="icon-button" aria-label="Đặt lại bản đồ" onClick={() => { setZoom(1); mapScroller.current?.scrollTo({ left: 0, top: 0 }); }}><RotateCcw size={16} /></button></div></div>
+          <div className="panel-heading"><div><div className="panel-kicker">SƠ ĐỒ ĐƯỜNG LĂN · VVTS</div><h2>Sơ đồ khai thác <span className="heading-count">{flights.length || arrivals.length ? `${fmtNumber(flights.length)} đi · ${fmtNumber(arrivals.length)} đến` : '—'}</span></h2></div><div className="map-actions"><button className="icon-button" aria-label="Thu nhỏ bản đồ" onClick={() => setZoom(Math.max(.8, zoom - .15))}><ZoomOut size={16} /></button><span className="zoom-value">{Math.round(zoom * 100)}%</span><button className="icon-button" aria-label="Phóng to bản đồ" onClick={() => setZoom(Math.min(1.5, zoom + .15))}><ZoomIn size={16} /></button><span className="map-action-sep" /><button className="icon-button" aria-label="Đặt lại bản đồ" onClick={() => { setZoom(1); mapScroller.current?.scrollTo({ left: 0, top: 0 }); }}><RotateCcw size={16} /></button></div></div>
           <div className="map-wrap" ref={mapScroller}>
             <div className="map-canvas" style={{ transform: `scale(${zoom})` }}>
-              <img src="/assets/parking-chart.jpg" alt="Sơ đồ PARKING CHART sân bay Tân Sơn Nhất" draggable={false} />
-              <svg className="map-overlay" viewBox="0 0 1901 1312" role="img" aria-label="Tuyến lăn khởi hành và vị trí tàu bay">
-                <defs><filter id="glow"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-                <g className="holding-marker" aria-label={`Điểm chờ trước đường băng ${activeRunwayName}`}><circle cx={holdingPoint.x} cy={holdingPoint.y} r="10"/><text x={holdingPoint.x - 35} y={holdingPoint.y - 15}>{runway === '25L-25R' ? 'S1 · RWY 25L' : 'S8 · RWY 07R'}</text></g>
-                <g className="runway-end"><circle cx={runwaySegment.threshold.x} cy={runwaySegment.threshold.y} r="6"/><text x={runwaySegment.threshold.x - (runway === '25L-25R' ? 82 : 50)} y="418">{runway === '25L-25R' ? 'TAKEOFF · ' : 'INT TKOF · '}{activeRunwayName}</text></g>
-                {flights.filter((flight) => timeCursor >= flight.readyAt - 45 * 60_000 && timeCursor < flight.wheelsOff).slice(0, 180).map((flight) => {
-                  const standPoint = getStandPoint(flight.stand);
-                  const taxiRoute = getTaxiRoutePoints(flight.stand, runway);
-                  const finished = timeCursor >= flight.wheelsOff;
-                  const taxiComplete = flight.taxiStart + flight.taxiMinutes * 60_000;
+              <img src="/assets/airfield-map.png" alt="Sơ đồ đường băng, đường lăn và vị trí đỗ Tân Sơn Nhất" draggable={false} />
+              <svg className="map-overlay" viewBox={MAP_VIEWBOX} role="img" aria-label="Sơ đồ tàu bay đi và đến">
+                <g className="holding-marker" aria-label="Điểm chờ S1 trước đường băng 25L">
+                  <circle cx={holdingPoint.x} cy={holdingPoint.y} r="10" />
+                  <text x={holdingPoint.x - 65} y={holdingPoint.y - 16}>S1 · 25L</text>
+                </g>
+                <g className="runway-end"><circle cx={runwaySegment.threshold.x} cy={runwaySegment.threshold.y} r="6" />
+                  <text x={runwaySegment.threshold.x - 95} y={runwaySegment.threshold.y + 25}>CẤT CÁNH · 25L</text></g>
+                {flights.filter((flight) => timeCursor >= flight.readyAt - 45 * 60_000 && timeCursor < flight.wheelsOff + TAKEOFF_VISIBLE_AFTER_MS).slice(0, 180).map((flight) => {
                   const queueIndex = holdingQueue.findIndex((queued) => queued.id === flight.id);
-                  const isTaxiing = timeCursor >= flight.taxiStart && timeCursor < taxiComplete;
-                  const isOnRunway = timeCursor >= flight.runwayEntryStart && timeCursor < flight.wheelsOff;
-                  const isTakingOff = timeCursor >= flight.takeoffRollStart && timeCursor < flight.wheelsOff;
-                  const position = isOnRunway
-                    ? isTakingOff
-                      ? pointAlongPath([runwaySegment.threshold, runwaySegment.rollEnd], (timeCursor - flight.takeoffRollStart) / TAKEOFF_ROLL_MS)
-                      : pointAlongPath(runwaySegment.entryPath, (timeCursor - flight.runwayEntryStart) / (flight.takeoffRollStart - flight.runwayEntryStart))
-                    : isTaxiing
-                        ? pointAlongPath(taxiRoute, (timeCursor - flight.taxiStart) / Math.max(1, flight.taxiMinutes * 60_000))
-                        : timeCursor >= taxiComplete
-                          ? queueIndex === 0
-                            ? holdingPoint
-                            : runway === '25L-25R'
-                              ? { x: holdingX - (queueIndex - 1) * 24, y: holdingPoint.y }
-                              : { x: holdingX, y: holdingPoint.y + (queueIndex - 1) * 24 }
-                          : standPoint;
+                  const position = departurePosition(flight, timeCursor, queueIndex, runway);
                   const chosen = selectedFlight === flight.callsign;
-                  if (finished) return null;
-                  const missedByNow = flight.missedCtot && timeCursor > flight.ctot + 10 * 60_000;
-                  const rotation = isTakingOff ? (runway === '25L-25R' ? -90 : 90) : 0;
-                  const phase = isTakingOff ? 'đang chạy đà cất cánh' : isOnRunway ? 'đang vào đường băng' : isTaxiing ? 'đang lăn' : timeCursor >= taxiComplete ? 'đang chờ tại điểm chờ runway' : `đang ở stand ${flight.stand}`;
-                  return <g key={flight.id} className={`aircraft-marker ${chosen ? 'selected' : ''} ${missedByNow ? 'delayed' : ''} ${isOnRunway ? 'taking-off' : ''}`} transform={`translate(${position.x} ${position.y}) rotate(${rotation})`} onClick={() => setSelectedFlight(flight.callsign)} role="button" aria-label={`${flight.callsign}, stand ${flight.stand}, ${phase}, ${missedByNow ? 'đã lỡ CTOT ban đầu' : 'chưa lỡ CTOT'}`} tabIndex={0}>
-                    <title>{`${flight.callsign} · ${missedByNow ? 'đã lỡ CTOT ban đầu (−5 / +10 phút)' : 'chưa lỡ CTOT'}`}</title>
+                  const delayed = flight.missedCtot && timeCursor >= (flight.returnStart ?? Infinity);
+                  return <g key={flight.id} className={`aircraft-marker departure ${chosen ? 'selected' : ''} ${delayed ? 'delayed' : ''}`}
+                    transform={`translate(${position.point.x} ${position.point.y}) rotate(${position.rotation})`}
+                    onClick={() => setSelectedFlight(flight.callsign)}
+                    onKeyDown={(event) => { if (event.key === 'Enter') setSelectedFlight(flight.callsign); }}
+                    role="button" aria-label={`${flight.callsign}, tàu đi hạng ${flight.wakeCategory}, ${position.phase}`} tabIndex={0}>
+                    <title>{`${flight.callsign} · ${position.phase}`}</title>
                     {chosen && <circle className="marker-pulse" r="16" />}
-                    <circle className="marker-halo" r="10"/><path d="M0-9 2-1 7 2 7 4 2 3 2 8 0 9-2 8-2 3-7 4-7 2-2-1Z"/><circle className="marker-core" r="2.5"/>
-                    {chosen && <g className="marker-label"><rect x="12" y="-16" width="88" height="23" rx="5"/><text x="20" y="0">{flight.callsign}</text></g>}
+                    <circle className="marker-halo" r="10" />
+                    <path d="M0-9 2-1 7 2 7 4 2 3 2 8 0 9-2 8-2 3-7 4-7 2-2-1Z" />
+                    <circle className="marker-core" r="2.5" />
+                    {chosen && <g className="marker-label"><rect x="12" y="-16" width="92" height="23" rx="5" /><text x="20" y="0">{flight.callsign}</text></g>}
+                  </g>;
+                })}
+                {arrivals.filter((flight) => timeCursor >= flight.approachStart && timeCursor <= dayStart + playbackEndMinute * 60_000).map((flight) => {
+                  const position = arrivalPosition(flight, timeCursor);
+                  const chosen = selectedFlight === flight.callsign;
+                  return <g key={flight.id} className={`aircraft-marker arrival ${chosen ? 'selected' : ''}`}
+                    transform={`translate(${position.point.x} ${position.point.y}) rotate(${position.rotation})`}
+                    onClick={() => setSelectedFlight(flight.callsign)}
+                    onKeyDown={(event) => { if (event.key === 'Enter') setSelectedFlight(flight.callsign); }}
+                    role="button" aria-label={`${flight.callsign}, tàu đến hạng ${flight.wakeCategory}, ${position.phase}`} tabIndex={0}>
+                    <title>{`${flight.callsign} · ${position.phase}`}</title>
+                    {chosen && <circle className="marker-pulse" r="16" />}
+                    <circle className="marker-halo" r="10" />
+                    <path d="M0-9 2-1 7 2 7 4 2 3 2 8 0 9-2 8-2 3-7 4-7 2-2-1Z" />
+                    <circle className="marker-core" r="2.5" />
+                    {chosen && <g className="marker-label"><rect x="12" y="-16" width="92" height="23" rx="5" /><text x="20" y="0">{flight.callsign}</text></g>}
                   </g>;
                 })}
               </svg>
             </div>
           </div>
-          <div className="map-legend"><span><i className="legend-dot aircraft" />Tàu bay tại thời điểm phát lại</span><span><i className="legend-dot delayed-aircraft" />Đã lỡ CTOT ban đầu</span><span><i className="legend-ring" />Điểm chờ trước đường băng</span></div>
+          <div className="map-legend"><span><i className="legend-dot aircraft" />Tàu đi · 25L</span><span><i className="legend-dot arrival-aircraft" />Tàu đến · 25R</span><span><i className="legend-dot delayed-aircraft" />Không tuân thủ CTOT</span><span><i className="legend-ring" />Chờ tại S1/P5</span></div>
         </section>
 
         <section className="panel dcl-panel" aria-label="Bản tin DCL">
@@ -327,16 +371,16 @@ function App() {
       <section className="kpi-grid" aria-label="Chỉ số mô phỏng">
         <article className="kpi-card"><div className="kpi-top"><span>TỔNG CHUYẾN</span><span className="kpi-icon blue"><Plane size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.completed ?? dailySchedule.length)}</div><div className="kpi-foot"><span className="kpi-neutral">{imported ? 'VVTS · ngày đang chọn' : 'Chưa nạp dữ liệu'}</span></div></article>
         <article className="kpi-card"><div className="kpi-top"><span>TỔNG THỜI GIAN CHỜ</span><span className="kpi-icon amber"><Clock3 size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.totalWaitMinutes ?? 0)}<small> phút</small></div><div className="kpi-foot"><span className="kpi-neutral">Không tính thời gian lăn</span></div></article>
-        <article className="kpi-card"><div className="kpi-top"><span>LỠ SLOT / CẤP LẠI CTOT</span><span className="kpi-icon red"><AlertTriangle size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.missedCtot ?? 0)}</div><div className="kpi-foot"><span className="kpi-neutral">Cửa sổ −5 / +10 phút <span className="dot-separator">·</span> {fmtNumber(proposed?.reissuedCtot ?? 0)} cấp lại</span></div></article>
+        <article className="kpi-card"><div className="kpi-top"><span>KHÔNG TUÂN THỦ CTOT</span><span className="kpi-icon red"><AlertTriangle size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.missedCtot ?? 0)}</div><div className="kpi-foot"><span className="kpi-neutral">Cửa sổ −5 / +10 phút <span className="dot-separator">·</span> {fmtNumber(proposed?.reissuedCtot ?? 0)} TSAT/CTOT cấp lại</span></div></article>
       </section>
 
       <div className="queue-grid">
         <section className="panel queue-panel" aria-label="Hàng chờ cất cánh">
           <div className="panel-heading queue-heading"><div><h2>Hàng chờ cất cánh</h2></div><span className={`queue-live ${playing ? 'on' : ''}`}><span />{playing ? 'LIVE' : 'ĐANG CHỜ'}</span></div>
-          <div className="queue-toolbar"><div className="search-box"><Search size={15} /><input aria-label="Tìm chuyến bay" placeholder="Tìm callsign, stand…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select aria-label="Lọc hàng chờ" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">Tất cả chuyến</option><option value="moving">Đang lăn</option><option value="missed">Lỡ CTOT</option></select><button className="icon-button filter-icon" aria-label="Bộ lọc nâng cao"><SlidersHorizontal size={15} /></button></div>
-          <div className="table-scroll"><table><thead><tr><th>#</th><th>CALLSIGN / LOẠI TÀU BAY</th><th>STAND</th><th>CTOT</th><th>TRẠNG THÁI</th></tr></thead><tbody>
+          <div className="queue-toolbar"><div className="search-box"><Search size={15} /><input aria-label="Tìm chuyến bay" placeholder="Tìm callsign, stand…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select aria-label="Lọc hàng chờ" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">Tất cả chuyến</option><option value="moving">Đang lăn</option><option value="missed">Không tuân thủ CTOT</option></select><button className="icon-button filter-icon" aria-label="Bộ lọc nâng cao"><SlidersHorizontal size={15} /></button></div>
+          <div className="table-scroll"><table><thead><tr><th>#</th><th>CALLSIGN / LOẠI TÀU BAY</th><th>STAND</th><th>TSAT</th><th>TRẠNG THÁI</th></tr></thead><tbody>
             {visibleFlights.slice(0, 90).map((flight) => <tr key={flight.id} className={selectedFlight === flight.callsign ? 'selected-row' : ''} onClick={() => setSelectedFlight(flight.callsign)}>
-              <td className="order-cell">{flight.order.toString().padStart(2, '0')}</td><td><div className="flight-call">{flight.callsign}</div><div className="flight-type">{flight.aircraftType}</div></td><td><span className="stand-pill">{flight.stand}</span></td><td className="time-cell" title={flight.reissuedCtot ? `CTOT ban đầu ${fmtShort(flight.ctot)}` : undefined}>{fmtShort(flight.reissuedCtot ?? flight.ctot)}</td><td><span className={`status-pill ${flight.reissuedCtot ? 'status-wait' : flight.waitMinutes > 0.1 ? 'status-wait' : 'status-ok'}`}><i />{flight.reissuedCtot ? 'CTOT cấp lại' : flight.waitMinutes > .1 ? 'Chờ slot' : 'Đúng CTOT'}</span></td>
+              <td className="order-cell">{flight.order.toString().padStart(2, '0')}</td><td><div className="flight-call">{flight.callsign}</div><div className="flight-type">{flight.aircraftType}</div></td><td><span className="stand-pill">{flight.stand}</span></td><td className="time-cell" title={flight.reissuedTsat ? `TSAT ban đầu ${fmtShort(flight.tsat)}` : undefined}>{fmtShort(flight.reissuedTsat ?? flight.tsat)}</td><td><span className={`status-pill ${flight.missedCtot ? 'status-late' : flight.waitMinutes > 0.1 ? 'status-wait' : 'status-ok'}`}><i />{flight.missedCtot ? 'Không tuân thủ CTOT' : flight.waitMinutes > .1 ? 'Chờ slot' : 'Đúng CTOT'}</span></td>
             </tr>)}
             {!visibleFlights.length && <tr><td colSpan={5} className="empty-row">{flights.length ? 'Không có chuyến phù hợp bộ lọc.' : 'Nạp dữ liệu và chạy mô phỏng để hiển thị hàng chờ.'}</td></tr>}
           </tbody></table></div>
