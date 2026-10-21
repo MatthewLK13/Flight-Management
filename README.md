@@ -21,7 +21,8 @@
 - **Dữ liệu sẵn dùng:** hai workbook mẫu 7 ngày và 3 ngày được tích hợp trong ứng dụng. Bộ 7 ngày tự nạp khi mở trang; có thể đổi sang bộ 3 ngày ngay trên giao diện.
 - **Nhập dữ liệu mới:** nhận tệp `.xls`, `.xlsx` hoặc `.csv`. Dữ liệu được đọc trong trình duyệt, lọc các chuyến khởi hành từ `VVTS` và bổ sung các trường còn thiếu để chạy mô phỏng.
 - **Parking chart:** hiển thị tàu bay tại stand, quá trình lăn từ stand đến điểm chờ, nhập đường băng và cất cánh. Có chọn chuyến, phóng to/thu nhỏ bản đồ và phát lại theo nhiều tốc độ.
-- **Hàng chờ CTOT:** áp dụng cửa sổ cất cánh từ **CTOT − 5 phút đến CTOT + 10 phút**. Chuyến không kịp slot được đưa về cuối hàng chờ tại điểm chờ và nhận CTOT khả dụng mới theo lịch mô phỏng.
+- **Hàng chờ CTOT:** áp dụng cửa sổ cất cánh từ **CTOT − 5 phút đến CTOT + 10 phút**. Chuyến quá hạn quay về vị trí đỗ trống gần nhất, chờ cấp TSAT/CTOT mới rồi tiếp tục khai thác.
+- **Thời tiết xấu thủ công:** nút bật/tắt mưa tác động trực tiếp lên dòng thời gian. Khi bật, hệ thống ngừng cấp phép cất/hạ cánh mới; tàu đã vào đường băng hoặc bắt đầu tiếp cận được hoàn tất chuyển động. Đồng hồ tiếp tục chạy để theo dõi hết hạn CTOT. Khi tắt, hệ thống tự cấp lịch mới, giữ khoảng cách đường băng, ưu tiên slot còn hiệu lực và không xếp hai tàu Heavy liên tiếp.
 - **Điện văn DCL:** phát các bước RCD, FSM, CLD, CDA theo kịch bản, trình bày từng trường của điện văn theo hàng dọc và đồng bộ với thời gian phát lại.
 - **Theo dõi kết quả:** hiển thị tổng chuyến, tổng thời gian chờ, số chuyến lỡ slot/cấp lại CTOT và danh sách chuyến cùng trạng thái hiện tại.
 - **Ghi kết quả:** với tệp mới được mở bằng trình duyệt hỗ trợ quyền ghi, có thể bổ sung các cột kết quả vào chính workbook nguồn.
@@ -69,16 +70,22 @@ Thư mục đầu ra là `dist/`.
 
 ## Dữ liệu và quy tắc xử lý
 
-Hai tệp trong `public/samples/` là bản sao của hai workbook trong thư mục `data sample` của dự án. Chúng được phục vụ cùng website để demo hoạt động ngay sau khi triển khai:
+Bốn workbook trong `public/samples/` được phục vụ cùng ứng dụng. Bộ `21102026.xlsx` được chọn mặc định; các bộ cũ vẫn có thể chọn trong danh sách nguồn dữ liệu:
 
 | Bộ dữ liệu | Đường dẫn công khai | Số dòng nguồn |
 | --- | --- | ---: |
+| Cập nhật 21.10.2026, khai thác 01.10.2026 | `/samples/21102026.xlsx` | 100: 70 DEP, 30 ARR |
+| Chuyên đề, khai thác 01.10.2026 | `/samples/chuyen-de.xlsx` | 100: 70 DEP, 30 ARR |
 | 7 ngày | `/samples/7-days.xls` | 14.150 |
 | 3 ngày | `/samples/3-days.xls` | 6.016 |
+
+Trong bộ cập nhật, cả 70 CTOT đã có trong nguồn và cách STD 15 phút. Bộ đọc ghép giờ CTOT dạng `01:20 PM` với `FlyDate`, đồng thời giữ đúng timestamp ISO nếu có. Cột `Compliance = Không tuân thủ` là kịch bản bắt buộc: 25 chuyến được đánh dấu sẽ chờ quá CTOT + 10 phút, quay về vị trí đỗ trống gần nhất, rồi nhận TSAT/CTOT mới. Các trường nguồn được giữ nguyên. Bộ này có 50 chuyến đi nội địa, 20 chuyến đi quốc tế, 22 chuyến đến nội địa và 8 chuyến đến quốc tế; thời gian hạ cánh dùng ATA có sẵn. Có 5 dòng STA sớm hơn ATD được giữ nguyên để đối chiếu với nguồn.
 
 Các workbook mẫu được ứng dụng đọc mà không ghi đè. Khi dùng dữ liệu tải lên, phần mềm giữ các cột nguồn và bổ sung trường mô phỏng khi thiếu, trong đó có `ScheduledDeparture`, `CTOT`, `Stand`, `StandReadyAt`, `TaxiMinutes`, `TaxiRoute`, `RunwayConfig`, `RunwayEntry`, `TakeoffRollStart`, `ActualTakeoff`, `ReissuedCTOT`, `QueueOrder` và `SimulationStatus`. Giá trị được tạo cho demo ổn định theo dữ liệu nguồn; trường có sẵn được ưu tiên giữ lại.
 
 Chỉ các dòng có `AirportDeliveryCode = VVTS` mới được đưa vào mô phỏng khởi hành. Thời gian chờ được tính riêng với thời gian tàu bay đang lăn. Nếu bỏ lỡ cửa sổ CTOT, chuyến bay vẫn tiếp tục được xếp lịch bằng CTOT cấp lại, không đứng chờ vô thời hạn.
+
+Để quan sát xử lý thời tiết, chạy lịch rồi bật **Thời tiết xấu** khi một tàu đang lăn. Tiếp tục phát lại hoặc tua qua CTOT + 10 phút để xem tàu về vị trí đỗ và chuyển trạng thái đỏ. Tắt nút mưa để nhận TSAT/CTOT mới tự động; hàng chờ, bản đồ và bản tin DCL cập nhật đồng bộ. Tàu chưa rời stand tiếp tục chờ tại stand đó. Nếu tua về quá khứ và thay đổi nút thời tiết, các thay đổi thời tiết sau thời điểm vừa chọn được thay bằng kịch bản mới.
 
 **Lưu ý về dữ liệu công khai:** khi triển khai website, hai workbook trong `public/samples/` có thể được truy cập trực tiếp bằng URL ở bảng trên. Không đặt dữ liệu nhạy cảm vào thư mục này.
 

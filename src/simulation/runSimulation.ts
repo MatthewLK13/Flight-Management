@@ -3,14 +3,17 @@ import { optimizeFlights } from './optimizer';
 import { wakeCategory, type WakeCategory } from '../data/aircraft';
 import { getNearestReturnStand } from '../map/airfieldGeometry';
 
-export const RUNWAY_MOVEMENT_MS = 2 * 60_000;
-export const TAKEOFF_ROLL_MS = 60_000;
+import { RUNWAY_MOVEMENT_MS, TAKEOFF_ROLL_MS } from './movementPhysics';
+export { RUNWAY_MOVEMENT_MS, TAKEOFF_ROLL_MS };
 
 export type ScheduledFlight = {
   id: string; callsign: string; aircraftType: string; stand: string; wakeCategory: WakeCategory;
   readyAt: number; ctot: number; taxiMinutes: number; row: Record<string, unknown>;
+  forceCtotMiss?: boolean;
 };
 export type TimelineItem = ScheduledFlight & {
+  surfacePlan?: import('./surfaceTraffic').SurfacePlan;
+  weather?: import('./weather').WeatherDepartureState;
   order: number; wheelsOff: number; taxiStart: number; waitMinutes: number;
   runwayEntryStart: number; takeoffRollStart: number;
   missedCtot: boolean; reissuedCtot: number | null; tsat: number; reissuedTsat: number | null;
@@ -43,6 +46,7 @@ export function toScheduledFlights(rows: Record<string, unknown>[]): ScheduledFl
       id: String(row.CallSign ?? `FLT-${index + 1}`) + `-${index}`,
       callsign: String(row.CallSign ?? `FLT-${index + 1}`),
       aircraftType, wakeCategory: wakeCategory(aircraftType),
+      forceCtotMiss: String(row.Compliance ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase().replace(/\s+/g, ' ') === 'khong tuan thu',
       stand: String(row.Stand ?? '—'), readyAt: Math.max(scheduled - taxiMinutes * 60_000, standReady), ctot, taxiMinutes, row,
     };
   });
@@ -62,7 +66,7 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
     const [flight] = pending.splice(nextIndex, 1);
     const taxiStart = taxiwayAvailable;
     arrivals.push({ flight, slot: flight.ctot, hadMissed: false, taxiStart, taxiComplete: taxiStart + flight.taxiMinutes * 60_000 });
-    taxiwayAvailable += RUNWAY_MOVEMENT_MS;
+    taxiwayAvailable += 120_000;
   }
   arrivals.sort((a, b) => a.taxiComplete - b.taxiComplete || a.flight.id.localeCompare(b.flight.id));
 
@@ -91,9 +95,10 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
     const item = holdingQueue.shift()!;
     const earliestTakeoff = Math.max(item.taxiComplete + RUNWAY_MOVEMENT_MS, runwayAvailable, item.slot - 5 * 60_000);
     while (nextArrival < arrivals.length && arrivals[nextArrival].taxiComplete <= earliestTakeoff) holdingQueue.push(arrivals[nextArrival++]);
-    const originalWindowMissed = !isWithinCtotWindow(new Date(earliestTakeoff), new Date(item.slot));
+    const forcedMiss = Boolean(item.flight.forceCtotMiss && !item.hadMissed);
+    const originalWindowMissed = forcedMiss || !isWithinCtotWindow(new Date(earliestTakeoff), new Date(item.slot));
     if (originalWindowMissed && !item.hadMissed) {
-      const returnStart = Math.max(item.taxiComplete, item.slot + 10 * 60_000);
+      const returnStart = Math.max(item.taxiComplete, item.slot + 10 * 60_000 + 1);
       const returnEnd = returnStart + item.flight.taxiMinutes * 60_000;
       const unavailable = new Set([...returnReservations].filter(([, until]) => until > returnStart).map(([stand]) => stand));
       const returnStand = getNearestReturnStand(item.flight.stand, unavailable, item.flight.wakeCategory);
@@ -107,7 +112,8 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
       let insertion = nextArrival;
       while (insertion < arrivals.length && arrivals[insertion].taxiComplete <= reissued.taxiComplete) insertion += 1;
       arrivals.splice(insertion, 0, reissued);
-      clock = Math.max(clock, returnStart);
+      // A forced scenario waits for expiry without blocking other valid slots.
+      if (!forcedMiss) clock = Math.max(clock, returnStart);
       continue;
     }
     const wheelsOff = earliestTakeoff;

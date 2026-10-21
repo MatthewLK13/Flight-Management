@@ -1,12 +1,58 @@
+import { surfacePosition } from '../simulation/surfaceTraffic';
 import type { ArrivalTimelineItem } from '../simulation/arrivals';
 import { TAKEOFF_ROLL_MS, type TimelineItem } from '../simulation/runSimulation';
 
-export const TAKEOFF_VISIBLE_AFTER_MS = 30_000;
+import { AIRBORNE_VISIBLE_MS, TAKEOFF_METRES_PER_SECOND, METRES_PER_PIXEL, takeoffDistanceProgress } from '../simulation/movementPhysics';
+export const TAKEOFF_VISIBLE_AFTER_MS = AIRBORNE_VISIBLE_MS;
 import { getArrivalRoutePoints, getHoldingPoint, getRunwaySegment, getStandPoint, getTaxiRoutePoints, pointAlongPath, type MapPoint } from './airfieldGeometry';
 
 export type AircraftPosition = { point: MapPoint; phase: string; rotation: number };
 
 export function departurePosition(flight: TimelineItem, time: number, queueIndex: number, runway: string): AircraftPosition {
+  const weather = flight.weather;
+  if (weather) {
+    if (time < weather.start) return departurePosition(weather.previous, time, queueIndex, runway);
+    const missed = weather.missedAt !== null && time >= weather.missedAt;
+    if (missed && weather.returnStand) {
+      if (weather.returnStart !== null && time < weather.returnStart) return {
+        ...departurePosition(weather.previous, Math.min(time, weather.previous.runwayEntryStart - 1), queueIndex, runway),
+        phase: 'không tuân thủ CTOT · chờ vị trí đỗ trống',
+      };
+      if (weather.returnEnd !== null && time < weather.returnEnd && weather.returnPath.length) return {
+        point: pointAlongPath(weather.returnPath, (time - weather.returnStart!) / (weather.returnEnd - weather.returnStart!)),
+        phase: 'không tuân thủ CTOT · quay về vị trí đỗ', rotation: 0,
+      };
+      if (time < weather.resumedTaxiStart) return {
+        point: getStandPoint(weather.returnStand), phase: `chờ TSAT/CTOT mới tại stand ${weather.returnStand}`, rotation: 0,
+      };
+    }
+    if (missed && !weather.returnStand) return {
+      ...departurePosition(weather.previous, Math.min(time, weather.previous.runwayEntryStart - 1), queueIndex, runway),
+      phase: 'không tuân thủ CTOT · chờ vị trí đỗ trống',
+    };
+    if (weather.heldAtStand && time < weather.resumedTaxiStart) return {
+      point: getStandPoint(weather.groundStand),
+      phase: missed ? `chờ TSAT/CTOT mới tại stand ${weather.groundStand}` : `chờ thời tiết tốt tại stand ${weather.groundStand}`, rotation: 0,
+    };
+    if ((weather.heldAtStand || missed) && time < weather.groundReadyAt) {
+      const route = getTaxiRoutePoints(weather.returnStand ?? weather.groundStand, runway);
+      return { point: pointAlongPath(route, (time - weather.resumedTaxiStart) / (weather.groundReadyAt - weather.resumedTaxiStart)),
+        phase: 'lăn theo TSAT mới', rotation: 0 };
+    }
+    if (!weather.heldAtStand && !missed && time < weather.groundReadyAt) return departurePosition(weather.previous, Math.min(time, weather.previous.runwayEntryStart - 1), queueIndex, runway);
+    if (time < flight.runwayEntryStart) return {
+      ...departurePosition(weather.previous, Math.min(time, weather.previous.runwayEntryStart - 1), queueIndex, runway),
+      ...(missed && !weather.returnStand ? { phase: 'không tuân thủ CTOT · chờ vị trí đỗ trống' } : { phase: 'chờ thời tiết hoặc slot mới tại S1' }),
+      ...(time >= weather.groundReadyAt ? { point: getHoldingPoint(runway) } : {}),
+    };
+    // Use the ordinary runway animation after the revised clearance.
+    return departurePosition({ ...flight, weather: undefined, surfacePlan: undefined, returnStart: null, returnEnd: null,
+      returnStand: null, secondTaxiStart: null, taxiStart: -Infinity }, time, queueIndex, runway);
+  }
+  if (flight.surfacePlan) {
+    if (time < flight.takeoffRollStart) return surfacePosition(flight.surfacePlan, time);
+    return departurePosition({ ...flight, surfacePlan: undefined, returnStart: null, returnEnd: null, returnStand: null, secondTaxiStart: null, taxiStart: -Infinity }, time, queueIndex, runway);
+  }
   const stand = getStandPoint(flight.stand);
   const route = getTaxiRoutePoints(flight.stand, runway);
   const hold = getHoldingPoint(runway);
@@ -29,12 +75,18 @@ export function departurePosition(flight: TimelineItem, time: number, queueIndex
     point: pointAlongPath(runwaySegment.entryPath, (time - flight.runwayEntryStart) / (flight.takeoffRollStart - flight.runwayEntryStart)),
     phase: 'vào đường băng 25L', rotation: -90,
   };
-  if (time >= flight.wheelsOff) return { point: runwaySegment.rollEnd, phase: 'đã cất cánh 25L', rotation: -90 };
-  return { point: pointAlongPath([runwaySegment.threshold, runwaySegment.rollEnd], (time - flight.takeoffRollStart) / TAKEOFF_ROLL_MS), phase: 'cất cánh 25L', rotation: -90 };
+  if (time >= flight.wheelsOff) return { point: { x: runwaySegment.rollEnd.x - (time - flight.wheelsOff) / 1000 * TAKEOFF_METRES_PER_SECOND / METRES_PER_PIXEL, y: runwaySegment.rollEnd.y - (time - flight.wheelsOff) / 1000 * 4 }, phase: 'đã cất cánh 25L', rotation: -90 };
+  return { point: pointAlongPath([runwaySegment.threshold, runwaySegment.rollEnd], takeoffDistanceProgress((time - flight.takeoffRollStart) / TAKEOFF_ROLL_MS)), phase: 'cất cánh 25L', rotation: -90 };
 }
 
 export function arrivalPosition(flight: ArrivalTimelineItem, time: number): AircraftPosition {
-  const route = getArrivalRoutePoints(flight.stand);
+  const weather = flight.weather;
+  if (weather && time < weather.start) return arrivalPosition(weather.previous, time);
+  if (!weather && flight.surfacePlan && time >= flight.touchdown) return surfacePosition(flight.surfacePlan, time);
+  const route = getArrivalRoutePoints(flight.stand, flight.exitBranch);
+  if (weather && time < flight.approachStart) return {
+    point: route.approach[0], phase: 'chờ tiếp cận do thời tiết xấu', rotation: -90,
+  };
   if (time >= flight.standArrival) return { point: route.fromHold.at(-1)!, phase: `đang đỗ tại stand ${flight.stand}`, rotation: 0 };
   if (time < flight.touchdown) return {
     point: pointAlongPath(route.approach, (time - flight.approachStart) / (flight.touchdown - flight.approachStart)),
@@ -46,7 +98,7 @@ export function arrivalPosition(flight: ArrivalTimelineItem, time: number): Airc
   };
   if (time < flight.p5HoldAt) return {
     point: pointAlongPath(route.toHold, (time - flight.landingEnd) / (flight.p5HoldAt - flight.landingEnd)),
-    phase: 'lăn theo P4 đến P5', rotation: 0,
+    phase: `lăn theo ${flight.exitBranch ?? 'P4'} đến điểm chờ P5`, rotation: 0,
   };
   if (time < flight.crossingStart) return { point: route.toHold.at(-1)!, phase: 'dừng trước 25L tại P5', rotation: 0 };
   if (time < flight.crossingEnd) return {

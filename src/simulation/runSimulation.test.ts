@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TAKEOFF_ROLL_MS } from './movementPhysics';
 import { runSimulation, toScheduledFlights } from './runSimulation';
 
 
@@ -23,7 +24,7 @@ describe('runSimulation', () => {
     expect(departure.runwayEntryStart).toBeLessThan(departure.takeoffRollStart);
     expect(departure.takeoffRollStart).toBeLessThan(departure.wheelsOff);
     expect(departure.runwayEntryStart).toBeGreaterThanOrEqual(departure.taxiStart + flight.taxiMinutes * 60_000);
-    expect(departure.wheelsOff - departure.takeoffRollStart).toBe(60_000);
+    expect(departure.wheelsOff - departure.takeoffRollStart).toBeCloseTo(TAKEOFF_ROLL_MS, 2);
   });
 });
 
