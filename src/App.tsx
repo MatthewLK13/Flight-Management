@@ -373,9 +373,7 @@ function App() {
           <strong>{badWeather ? 'BẬT' : 'TẮT'}</strong>
         </button>
         <div className="weather-description" role="status">
-          <strong>{badWeather ? 'Mưa · tạm ngừng cấp phép cất/hạ cánh mới' : weatherPeriods.length ? 'Thời tiết tốt · tự động khôi phục lịch bay' : 'Thời tiết tốt · khai thác bình thường'}</strong>
-          <span>{badWeather ? 'CTOT vẫn được theo dõi. Tàu quá hạn về vị trí đỗ trống gần nhất, chờ TSAT/CTOT mới.'
-            : weatherPeriods.length ? 'Các chuyến đang chờ được cấp TSAT/CTOT mới và tiếp tục theo thứ tự khai thác.' : 'Bật mưa để tạo tình huống delay và theo dõi xử lý chuyến quá hạn CTOT.'}</span>
+          <strong>{badWeather ? 'Thời tiết xấu' : 'Thời tiết tốt'}</strong>
         </div>
       </section>
 
@@ -457,9 +455,9 @@ function App() {
       </div>
 
       <section className="kpi-grid" aria-label="Chỉ số mô phỏng">
-        <article className="kpi-card"><div className="kpi-top"><span>TỔNG CHUYẾN</span><span className="kpi-icon blue"><Plane size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.completed ?? dailySchedule.length)}</div><div className="kpi-foot"><span className="kpi-neutral">{imported ? 'VVTS · ngày đang chọn' : 'Chưa nạp dữ liệu'}</span></div></article>
+        <article className="kpi-card"><div className="kpi-top"><span>TỔNG CHUYẾN</span><span className="kpi-icon blue"><Plane size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.completed ?? dailySchedule.length)}</div></article>
         <article className="kpi-card"><div className="kpi-top"><span>TỔNG ĐỘ TRỄ CTOT</span><span className="kpi-icon amber"><Clock3 size={17} /></span></div><div className="kpi-value">{fmtNumber(currentWait)}<small> phút</small></div><div className="kpi-foot"><span className="kpi-neutral">Chỉ cộng chuyến vi phạm · ATD trừ CTOT gốc</span></div></article>
-        <article className="kpi-card"><div className="kpi-top"><span>KHÔNG TUÂN THỦ CTOT</span><span className="kpi-icon red"><AlertTriangle size={17} /></span></div><div className="kpi-value">{fmtNumber(currentMissed)}</div><div className="kpi-foot"><span className="kpi-neutral">Cửa sổ −5 / +10 phút <span className="dot-separator">·</span> {fmtNumber(currentReissued)} TSAT/CTOT cấp lại</span></div></article>
+        <article className="kpi-card"><div className="kpi-top"><span>KHÔNG TUÂN THỦ CTOT</span><span className="kpi-icon red"><AlertTriangle size={17} /></span></div><div className="kpi-value">{fmtNumber(currentMissed)}</div></article>
       </section>
 
       <div className="queue-grid">
