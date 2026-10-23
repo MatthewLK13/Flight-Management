@@ -1,10 +1,11 @@
 import type { MapPoint } from '../map/parkingGeometry';
 import { pointOnPath as pointAlongPath } from '../map/pathMetrics';
-import { taxiRoutes, pathLength, STAND_POINTS } from '../map/surfaceGraph';
+import { taxiRoutes, pathLength, distanceAlongPathToPoint, STAND_POINTS } from '../map/surfaceGraph';
 import { getArrivalRoutePoints, getRunwaySegment, getNearestReturnStand } from '../map/airfieldGeometry';
 import { taxiDuration, landingRollDuration, RUNWAY_ENTRY_MS, TAKEOFF_ROLL_MS, RUNWAY_CLEARANCE_MS, takeoffDistanceProgress } from './movementPhysics';
 import type { TimelineItem } from './runSimulation';
 import type { ArrivalTimelineItem } from './arrivals';
+import { ctotDelayMinutes } from './ctot';
 
 export type SurfaceLeg = { start: number; end: number; points: MapPoint[]; phase: string };
 export type SurfacePlan = { visibleFrom: number; visibleUntil: number; legs: SurfaceLeg[]; route: string };
@@ -104,12 +105,28 @@ export function planSurfaceTraffic(departures: TimelineItem[], inbound: ArrivalT
         for (const route of taxiRoutes(stand)) {
           const taxiMs = taxiDuration(pathLength(route.points));
           const entry = Math.max(source.runwayEntryStart + delay, source.readyAt + taxiMs);
+          const projectedWheelsOff = entry + RUNWAY_ENTRY_MS + TAKEOFF_ROLL_MS;
+          const inboundClearAt = inbound.reduce((latest, arrival) =>
+            arrival.touchdown <= projectedWheelsOff ? Math.max(latest, arrival.landingEnd) : latest, -Infinity);
+          if (entry + RUNWAY_ENTRY_MS < inboundClearAt) {
+            nextDelay = Math.min(nextDelay, delay + inboundClearAt - (entry + RUNWAY_ENTRY_MS));
+            continue;
+          }
           const legs: SurfaceLeg[] = [];
           let taxiStart = entry - taxiMs;
-          const groundMiss = entry + RUNWAY_ENTRY_MS + TAKEOFF_ROLL_MS > source.ctot + 600_000;
-          let returnStart = source.returnStart ?? (groundMiss ? Math.max(source.ctot + 600_001, source.readyAt + taxiMs) : null);
-          let returnEnd = source.returnEnd, secondTaxiStart = source.secondTaxiStart;
-          const returnStand = source.returnStand ?? (groundMiss ? getNearestReturnStand(stand, new Set(), source.wakeCategory) : null);
+          const wheelsOffProjected = entry + RUNWAY_ENTRY_MS + TAKEOFF_ROLL_MS;
+          const groundMiss = wheelsOffProjected > source.ctot + 600_000;
+          const commitDistance = distanceAlongPathToPoint(route.points);
+          const commitAt = commitDistance === null ? Infinity : taxiStart + taxiMs * commitDistance / Math.max(1, pathLength(route.points));
+          const passedCommitPoint = source.missedCtot && source.returnStand === null
+            || commitAt <= source.ctot + 600_000;
+          const mustReturnToStand = groundMiss && !passedCommitPoint;
+          const needsReturn = mustReturnToStand || (source.returnStart !== null && !passedCommitPoint);
+          let returnStart = needsReturn ? source.returnStart ?? Math.max(source.ctot + 600_001, source.readyAt + taxiMs) : null;
+          let returnEnd = needsReturn ? source.returnEnd : null;
+          let secondTaxiStart = needsReturn ? source.secondTaxiStart : null;
+          const returnStand = needsReturn
+            ? source.returnStand ?? getNearestReturnStand(stand, new Set(), source.wakeCategory) : null;
           if (returnStart !== null && returnStand) {
             // The scripted expiry occurs at S1; schedule its first taxi just in time.
             returnStart += delay;
@@ -145,12 +162,14 @@ export function planSurfaceTraffic(departures: TimelineItem[], inbound: ArrivalT
             continue;
           }
           reservations.reserve([...legs, ...rollLegs], radius);
-          const revised = source.missedCtot || wheelsOff > source.ctot + 600_000;
+          const revised = source.missedCtot || ctotDelayMinutes(wheelsOff, source.ctot) > 0;
+          const returnedToStand = returnStart !== null && returnStand !== null;
           chosen = { ...source, stand, taxiStart, taxiMinutes: taxiMs / 60_000, runwayEntryStart, takeoffRollStart, wheelsOff,
             returnStart, returnEnd, returnStand, secondTaxiStart,
-            tsat: taxiStart, reissuedTsat: revised ? secondTaxiStart ?? taxiStart : null,
-            reissuedCtot: revised ? wheelsOff : source.reissuedCtot,
-            missedCtot: revised, status: revised ? 'Không tuân thủ CTOT' : source.status, waitMinutes: Math.max(0, (wheelsOff - source.readyAt - taxiMs) / 60_000),
+            tsat: taxiStart, reissuedTsat: revised && returnedToStand ? secondTaxiStart ?? taxiStart : null,
+            reissuedCtot: revised && !returnedToStand ? wheelsOff : returnedToStand ? null : source.reissuedCtot,
+            missedCtot: revised, status: revised ? 'Không tuân thủ CTOT' : source.status,
+            waitMinutes: ctotDelayMinutes(wheelsOff, source.ctot),
             surfacePlan: { visibleFrom: legs[0].start, visibleUntil: wheelsOff + 8000, legs, route: route.label } };
           runwayAvailable = wheelsOff + RUNWAY_CLEARANCE_MS;
           break;

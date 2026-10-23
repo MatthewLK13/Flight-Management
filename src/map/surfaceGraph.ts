@@ -43,6 +43,29 @@ export function pathLength(points: MapPoint[]): number {
   return points.slice(1).reduce((sum, point, index) => sum + Math.hypot(point.x - points[index].x, point.y - points[index].y), 0);
 }
 
+
+/** Distance along a chart taxi route to the marked CTOT commitment point near S1. */
+export const CTOT_COMMIT_POINT: MapPoint = { x: 1880, y: V_Y };
+export function distanceAlongPathToPoint(points: MapPoint[], target = CTOT_COMMIT_POINT, tolerance = 36): number | null {
+  let traversed = 0;
+  let bestDistance = Infinity;
+  let bestProgress: number | null = null;
+  for (let index = 1; index < points.length; index += 1) {
+    const start = points[index - 1], end = points[index];
+    const dx = end.x - start.x, dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
+    const ratio = Math.max(0, Math.min(1, ((target.x - start.x) * dx + (target.y - start.y) * dy) / (length * length)));
+    const distance = Math.hypot(start.x + ratio * dx - target.x, start.y + ratio * dy - target.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestProgress = traversed + ratio * length;
+    }
+    traversed += length;
+  }
+  return bestDistance <= tolerance ? bestProgress : null;
+}
+
 type Edge = { to: string; points: MapPoint[]; length: number; key: string };
 const points = new Map<string, MapPoint>();
 const edges = new Map<string, Edge[]>();
@@ -167,10 +190,12 @@ export function runwayEntryPath(): MapPoint[] {
 }
 
 export function arrivalExitPaths(branch: 'P4' | 'P5') {
-  const exit = branch === 'P4' ? { x: 758, y: 227 } : { x: 585, y: 227 };
+  // Runway exit points follow the actual P4/P5 connectors on the clean chart.
+  const exit = branch === 'P4' ? { x: 620, y: 227 } : { x: 475, y: 227 };
   const path = branch === 'P4'
-    ? [...curve(exit, { x: 704, y: 227 }, { x: 649, y: 315 }, { x: 572, y: 315 }), { x: 507, y: 315 },
+    ? [...curve(exit, { x: 594, y: 227 }, { x: 548, y: 315 }, { x: 507, y: 315 }), { x: 507, y: 315 },
       ...curve({ x: 507, y: 315 }, { x: 480, y: 315 }, { x: 473, y: 338 }, P5_HOLD).slice(1)]
-    : [...curve(exit, { x: 551, y: 227 }, { x: 482, y: 266 }, { x: 473, y: 300 }), P5_HOLD];
+    : [...curve(exit, { x: 475, y: 254 }, { x: 480, y: 284 }, { x: 473, y: 315 }),
+      ...curve({ x: 473, y: 315 }, { x: 473, y: 334 }, { x: 473, y: 350 }, P5_HOLD).slice(1)];
   return { exit, path };
 }

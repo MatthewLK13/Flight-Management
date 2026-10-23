@@ -1,7 +1,8 @@
-import { isWithinCtotWindow } from './ctot';
+import { ctotDelayMinutes, isWithinCtotWindow } from './ctot';
 import { optimizeFlights } from './optimizer';
 import { wakeCategory, type WakeCategory } from '../data/aircraft';
 import { getNearestReturnStand } from '../map/airfieldGeometry';
+import { distanceAlongPathToPoint, pathLength, taxiRoutes } from '../map/surfaceGraph';
 
 import { RUNWAY_MOVEMENT_MS, TAKEOFF_ROLL_MS } from './movementPhysics';
 export { RUNWAY_MOVEMENT_MS, TAKEOFF_ROLL_MS };
@@ -92,11 +93,19 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
       }
     }
 
-    const item = holdingQueue.shift()!;
+    let item = holdingQueue.shift()!;
     const earliestTakeoff = Math.max(item.taxiComplete + RUNWAY_MOVEMENT_MS, runwayAvailable, item.slot - 5 * 60_000);
     while (nextArrival < arrivals.length && arrivals[nextArrival].taxiComplete <= earliestTakeoff) holdingQueue.push(arrivals[nextArrival++]);
     const forcedMiss = Boolean(item.flight.forceCtotMiss && !item.hadMissed);
     const originalWindowMissed = forcedMiss || !isWithinCtotWindow(new Date(earliestTakeoff), new Date(item.slot));
+    if (originalWindowMissed && !item.hadMissed) {
+      const route = taxiRoutes(item.flight.stand)[0]?.points ?? [];
+      const pointXDistance = distanceAlongPathToPoint(route);
+      const pointXAt = pointXDistance === null ? Infinity
+        : item.taxiStart + item.flight.taxiMinutes * 60_000 * pointXDistance / Math.max(1, pathLength(route));
+      const ctotExpiry = item.slot + 10 * 60_000 + 1;
+      if (pointXAt <= ctotExpiry) item = { ...item, hadMissed: true };
+    }
     if (originalWindowMissed && !item.hadMissed) {
       const returnStart = Math.max(item.taxiComplete, item.slot + 10 * 60_000 + 1);
       const returnEnd = returnStart + item.flight.taxiMinutes * 60_000;
@@ -117,16 +126,16 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
       continue;
     }
     const wheelsOff = earliestTakeoff;
-    const reissuedCtot = item.hadMissed ? wheelsOff : null;
+    const reissuedCtot = item.hadMissed && !item.returnStand ? wheelsOff : null;
     const flight = item.flight;
-    const waitMinutes = Math.max(0, (wheelsOff - flight.readyAt - flight.taxiMinutes * 60_000 - RUNWAY_MOVEMENT_MS) / 60_000);
+    const waitMinutes = ctotDelayMinutes(wheelsOff, flight.ctot);
     runwayAvailable = wheelsOff + RUNWAY_MOVEMENT_MS;
     clock = runwayAvailable;
     result.push({
       ...flight, order: result.length + 1, taxiStart: item.taxiStart, wheelsOff, waitMinutes,
       missedCtot: item.hadMissed, runwayEntryStart: wheelsOff - RUNWAY_MOVEMENT_MS,
       takeoffRollStart: wheelsOff - TAKEOFF_ROLL_MS, reissuedCtot,
-      tsat: item.taxiStart, reissuedTsat: item.secondTaxiStart ?? null,
+      tsat: item.taxiStart, reissuedTsat: item.returnStand ? item.secondTaxiStart ?? null : null,
       returnStart: item.returnStart ?? null, returnEnd: item.returnEnd ?? null,
       returnStand: item.returnStand ?? null, secondTaxiStart: item.secondTaxiStart ?? null,
       status: item.hadMissed ? 'Không tuân thủ CTOT' : waitMinutes > 0.1 ? 'Đang chờ' : 'Đúng CTOT',

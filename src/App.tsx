@@ -199,7 +199,7 @@ function App() {
         const physical = planSurfaceTraffic(raw.flights, scheduleArrivals(dailyArrivals, raw.flights), runway);
         const improved = { ...raw, flights: physical.flights, totalWaitMinutes: physical.flights.reduce((sum, flight) => sum + flight.waitMinutes, 0),
           missedCtot: physical.flights.filter((flight) => flight.missedCtot).length,
-          reissuedCtot: physical.flights.filter((flight) => flight.reissuedCtot !== null).length,
+          reissuedCtot: physical.flights.filter((flight) => flight.reissuedCtot !== null || flight.reissuedTsat !== null).length,
           durationMinutes: physical.flights.length ? (Math.max(...physical.flights.map((flight) => flight.wheelsOff)) - Math.min(...physical.flights.map((flight) => flight.readyAt))) / 60_000 : 0 };
         const inbound = physical.arrivals;
         setProposed(improved); setFlights(improved.flights); setArrivals(inbound);
@@ -315,8 +315,8 @@ function App() {
   const activeEvents = displayEvents.filter((event) => event.time <= timeCursor).slice(-8).reverse();
   const currentMissed = flights.filter((flight) => hasMissedCtotAt(flight, timeCursor)).length;
   const currentReissued = flights.filter((flight) => hasReissuedSlotAt(flight, timeCursor)).length;
-  const currentWait = flights.reduce((total, flight) => total + (Number.isFinite(flight.wheelsOff) ? flight.waitMinutes
-    : Math.max(flight.waitMinutes, (timeCursor - flight.readyAt - flight.taxiMinutes * 60_000) / 60_000, 0)), 0);
+  // Sum per-flight CTOT violations; playback start is not a delay reference.
+  const currentWait = flights.reduce((total, flight) => total + flight.waitMinutes, 0);
 
   return (
     <main className="app-shell">
@@ -331,12 +331,12 @@ function App() {
 
       <section className="project-hero" id="top" aria-label="Thông tin đồ án">
         <div className="project-hero-copy">
-          <div className="project-kicker"><span className="project-kicker-line" /> NHÓM 5</div>
+          <div className="project-heading-row"><div className="project-kicker"><span className="project-kicker-line" /> NHÓM 5</div><span className="project-class">LỚP <b>23ĐHKL01</b></span></div>
           <h1>ỨNG DỤNG CPDLC- DCL TRONG QUẢN LÝ LUỒNG KHÔNG LƯU TẠI CẢNG HÀNG KHÔNG SÂN BAY TÂN SƠN NHẤT</h1>
           <div className="project-advisor"><span>Giảng viên hướng dẫn:</span> <strong>Nguyễn Ngọc Hoàng Quân</strong></div>
           <div className="project-authors"><strong>Châu Ngọc Xuân <span>2331710004</span></strong><strong>Nguyễn Doãn Phương <span>2331710008</span></strong><strong>Phan Ngọc Trâm <span>2331710044</span></strong><strong>Dương Thị Hương Thảo <span>2331710038</span></strong></div>
         </div>
-        <div className="project-hero-meta"><span className="project-class">LỚP <b>23ĐHKL01</b></span></div>
+
       </section>
 
       <section className="control-panel" aria-label="Thiết lập mô phỏng">
@@ -458,7 +458,7 @@ function App() {
 
       <section className="kpi-grid" aria-label="Chỉ số mô phỏng">
         <article className="kpi-card"><div className="kpi-top"><span>TỔNG CHUYẾN</span><span className="kpi-icon blue"><Plane size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.completed ?? dailySchedule.length)}</div><div className="kpi-foot"><span className="kpi-neutral">{imported ? 'VVTS · ngày đang chọn' : 'Chưa nạp dữ liệu'}</span></div></article>
-        <article className="kpi-card"><div className="kpi-top"><span>TỔNG THỜI GIAN CHỜ</span><span className="kpi-icon amber"><Clock3 size={17} /></span></div><div className="kpi-value">{fmtNumber(currentWait)}<small> phút</small></div><div className="kpi-foot"><span className="kpi-neutral">Không tính thời gian lăn</span></div></article>
+        <article className="kpi-card"><div className="kpi-top"><span>TỔNG ĐỘ TRỄ CTOT</span><span className="kpi-icon amber"><Clock3 size={17} /></span></div><div className="kpi-value">{fmtNumber(currentWait)}<small> phút</small></div><div className="kpi-foot"><span className="kpi-neutral">Chỉ cộng chuyến vi phạm · ATD trừ CTOT gốc</span></div></article>
         <article className="kpi-card"><div className="kpi-top"><span>KHÔNG TUÂN THỦ CTOT</span><span className="kpi-icon red"><AlertTriangle size={17} /></span></div><div className="kpi-value">{fmtNumber(currentMissed)}</div><div className="kpi-foot"><span className="kpi-neutral">Cửa sổ −5 / +10 phút <span className="dot-separator">·</span> {fmtNumber(currentReissued)} TSAT/CTOT cấp lại</span></div></article>
       </section>
 
@@ -466,18 +466,26 @@ function App() {
         <section className="panel queue-panel" aria-label="Hàng chờ cất cánh">
           <div className="panel-heading queue-heading"><div><h2>Hàng chờ cất cánh</h2></div><span className={`queue-live ${playing ? 'on' : ''}`}><span />{playing ? 'LIVE' : 'ĐANG CHỜ'}</span></div>
           <div className="queue-toolbar"><div className="search-box"><Search size={15} /><input aria-label="Tìm chuyến bay" placeholder="Tìm callsign, stand…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select aria-label="Lọc hàng chờ" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">Tất cả chuyến</option><option value="moving">Đang lăn</option><option value="missed">Không tuân thủ CTOT</option></select><button className="icon-button filter-icon" aria-label="Bộ lọc nâng cao"><SlidersHorizontal size={15} /></button></div>
-          <div className="table-scroll"><table><thead><tr><th>#</th><th>CALLSIGN / LOẠI TÀU BAY</th><th>STAND</th><th>TSAT</th><th>TRẠNG THÁI</th></tr></thead><tbody>
+          <div className="table-scroll"><table><thead><tr><th>#</th><th>CALLSIGN / LOẠI TÀU BAY</th><th>STAND</th><th>TSAT / CTOT MỚI</th><th>TRẠNG THÁI</th></tr></thead><tbody>
             {visibleFlights.slice(0, 90).map((plannedFlight) => {
               const flight = departureAtTime(plannedFlight, timeCursor);
               const weather = weatherStatus(flight, timeCursor);
-              const missed = weather ? weather.missed && weather.pending : flight.missedCtot && timeCursor >= (flight.returnStart ?? Infinity);
-              const tsat = weather ? weather.tsat : flight.reissuedTsat ?? flight.tsat;
-              const status = weather?.label ?? (missed ? 'Không tuân thủ CTOT' : flight.waitMinutes > .1 ? 'Chờ slot' : 'Đúng CTOT');
+              const missed = hasMissedCtotAt(flight, timeCursor);
+              const revisedSlot = flight.reissuedTsat ?? flight.reissuedCtot;
+              const tsat = weather?.pending ? null : weather?.tsat ?? revisedSlot ?? flight.tsat;
+              const phase = departurePosition(flight, timeCursor, 0, runway).phase;
+              const status = weather?.label ?? (missed ? 'Không tuân thủ CTOT'
+                : phase.startsWith('đã cất cánh') ? 'Đã cất cánh'
+                  : phase.includes('cất cánh') ? 'Chạy đà cất cánh'
+                    : phase.includes('đường băng') ? 'Vào đường băng'
+                      : phase.includes('điểm chờ') || phase.includes('đang lăn') || phase.startsWith('lăn') ? 'Đang lăn'
+                        : phase.includes('chờ tại S1') ? 'Chờ tại điểm giữ S1'
+                          : 'Chờ TSAT tại stand');
               return <tr key={flight.id} className={selectedFlight === flight.callsign ? 'selected-row' : ''} onClick={() => setSelectedFlight(flight.callsign)}>
                 <td className="order-cell">{flight.order.toString().padStart(2, '0')}</td>
                 <td><div className="flight-call">{flight.callsign}</div><div className="flight-type">{flight.aircraftType}</div></td>
                 <td><span className="stand-pill">{weather && flight.weather?.returnStand && timeCursor >= (flight.weather.returnEnd ?? Infinity) ? flight.weather.returnStand : flight.stand}</span></td>
-                <td className="time-cell" title={`CTOT ban đầu ${fmtShort(flight.ctot)}${flight.reissuedCtot !== null && Number.isFinite(flight.reissuedCtot) ? ` · CTOT mới ${fmtShort(flight.reissuedCtot)}` : ''}`}>{tsat === null || !Number.isFinite(tsat) ? 'Chờ cấp lại' : fmtShort(tsat)}</td>
+                <td className="time-cell" title={`CTOT gốc ${fmtShort(flight.ctot)}${revisedSlot !== null && Number.isFinite(revisedSlot) ? ` · ${flight.reissuedTsat !== null ? 'TSAT' : 'CTOT'} mới ${fmtShort(revisedSlot)}` : ''}`}>{tsat === null || !Number.isFinite(tsat) ? 'Chờ cấp lại' : fmtShort(tsat)}</td>
                 <td><span className={`status-pill ${missed ? 'status-late' : weather?.pending || (!weather && flight.waitMinutes > .1) ? 'status-wait' : 'status-ok'}`}><i />{status}</span></td>
               </tr>;
             })}
