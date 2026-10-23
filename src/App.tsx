@@ -456,7 +456,7 @@ function App() {
 
       <section className="kpi-grid" aria-label="Chỉ số mô phỏng">
         <article className="kpi-card"><div className="kpi-top"><span>TỔNG CHUYẾN</span><span className="kpi-icon blue"><Plane size={17} /></span></div><div className="kpi-value">{fmtNumber(proposed?.completed ?? dailySchedule.length)}</div></article>
-        <article className="kpi-card"><div className="kpi-top"><span>TỔNG ĐỘ TRỄ CTOT</span><span className="kpi-icon amber"><Clock3 size={17} /></span></div><div className="kpi-value">{fmtNumber(currentWait)}<small> phút</small></div><div className="kpi-foot"><span className="kpi-neutral">Chỉ cộng chuyến vi phạm · ATD trừ CTOT gốc</span></div></article>
+        <article className="kpi-card"><div className="kpi-top"><span>TỔNG THỜI GIAN CHỜ</span><span className="kpi-icon amber"><Clock3 size={17} /></span></div><div className="kpi-value">{fmtNumber(currentWait)}<small> phút</small></div></article>
         <article className="kpi-card"><div className="kpi-top"><span>KHÔNG TUÂN THỦ CTOT</span><span className="kpi-icon red"><AlertTriangle size={17} /></span></div><div className="kpi-value">{fmtNumber(currentMissed)}</div></article>
       </section>
 
@@ -464,7 +464,7 @@ function App() {
         <section className="panel queue-panel" aria-label="Hàng chờ cất cánh">
           <div className="panel-heading queue-heading"><div><h2>Hàng chờ cất cánh</h2></div><span className={`queue-live ${playing ? 'on' : ''}`}><span />{playing ? 'LIVE' : 'ĐANG CHỜ'}</span></div>
           <div className="queue-toolbar"><div className="search-box"><Search size={15} /><input aria-label="Tìm chuyến bay" placeholder="Tìm callsign, stand…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select aria-label="Lọc hàng chờ" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">Tất cả chuyến</option><option value="moving">Đang lăn</option><option value="missed">Không tuân thủ CTOT</option></select><button className="icon-button filter-icon" aria-label="Bộ lọc nâng cao"><SlidersHorizontal size={15} /></button></div>
-          <div className="table-scroll"><table><thead><tr><th>#</th><th>CALLSIGN / LOẠI TÀU BAY</th><th>STAND</th><th>TSAT / CTOT MỚI</th><th>TRẠNG THÁI</th></tr></thead><tbody>
+          <div className="table-scroll"><table><thead><tr><th>#</th><th>CALLSIGN / LOẠI TÀU BAY</th><th>STAND</th><th>TSAT</th><th>TRẠNG THÁI</th></tr></thead><tbody>
             {visibleFlights.slice(0, 90).map((plannedFlight) => {
               const flight = departureAtTime(plannedFlight, timeCursor);
               const weather = weatherStatus(flight, timeCursor);
