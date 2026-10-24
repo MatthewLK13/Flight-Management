@@ -316,7 +316,7 @@ function App() {
   const currentMissed = flights.filter((flight) => hasMissedCtotAt(flight, timeCursor)).length;
   const currentReissued = flights.filter((flight) => hasReissuedSlotAt(flight, timeCursor)).length;
   // Sum per-flight CTOT violations; playback start is not a delay reference.
-  const currentWait = flights.reduce((total, flight) => total + flight.waitMinutes, 0);
+  const currentWait = flights.reduce((total, flight) => total + (flight.wheelsOff <= timeCursor ? flight.waitMinutes : 0), 0);
 
   return (
     <main className="app-shell">

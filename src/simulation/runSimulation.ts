@@ -55,19 +55,14 @@ export function toScheduledFlights(rows: Record<string, unknown>[]): ScheduledFl
 
 function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
   if (!ordered.length) return { flights: [], totalWaitMinutes: 0, missedCtot: 0, reissuedCtot: 0, completed: 0, durationMinutes: 0 };
-  const pending = [...ordered];
   const arrivals: QueueEntry[] = [];
-  let taxiwayAvailable = Math.min(...ordered.map((flight) => flight.readyAt));
-  while (pending.length) {
-    let nextIndex = pending.findIndex((flight) => flight.readyAt <= taxiwayAvailable);
-    if (nextIndex < 0) {
-      taxiwayAvailable = Math.min(...pending.map((flight) => flight.readyAt));
-      nextIndex = pending.findIndex((flight) => flight.readyAt <= taxiwayAvailable);
-    }
-    const [flight] = pending.splice(nextIndex, 1);
-    const taxiStart = taxiwayAvailable;
+  const standAvailable = new Map<string, number>();
+  // Pushback at one stand must not throttle unrelated stands and taxi routes.
+  // Shared-route separation is enforced by the surface reservation planner.
+  for (const flight of [...ordered].sort((a, b) => a.readyAt - b.readyAt || a.ctot - b.ctot || a.id.localeCompare(b.id))) {
+    const taxiStart = Math.max(flight.readyAt, standAvailable.get(flight.stand) ?? -Infinity);
     arrivals.push({ flight, slot: flight.ctot, hadMissed: false, taxiStart, taxiComplete: taxiStart + flight.taxiMinutes * 60_000 });
-    taxiwayAvailable += 120_000;
+    standAvailable.set(flight.stand, taxiStart + 120_000);
   }
   arrivals.sort((a, b) => a.taxiComplete - b.taxiComplete || a.flight.id.localeCompare(b.flight.id));
 
@@ -82,21 +77,32 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
     while (nextArrival < arrivals.length && arrivals[nextArrival].taxiComplete <= clock) holdingQueue.push(arrivals[nextArrival++]);
     if (!holdingQueue.length) continue;
 
-    if (result.at(-1)?.wakeCategory === 'H' && holdingQueue[0].flight.wakeCategory === 'H') {
-      const mediumIndex = holdingQueue.findIndex((entry) => entry.flight.wakeCategory === 'M');
-      if (mediumIndex >= 0) holdingQueue.unshift(holdingQueue.splice(mediumIndex, 1)[0]);
-      else {
-        const nextMedium = arrivals.slice(nextArrival).find((entry) => entry.flight.wakeCategory === 'M');
-        if (!nextMedium) throw new Error('Không thể xếp hai tàu H không liên tiếp: hàng chờ không còn tàu M.');
-        clock = Math.max(clock, nextMedium.taxiComplete);
-        continue;
-      }
+    const future = arrivals.slice(nextArrival);
+    const remaining = [...holdingQueue, ...future];
+    const heavyCount = remaining.filter(entry => entry.flight.wakeCategory === 'H').length;
+    const mediumCount = remaining.length - heavyCount;
+    const requiredWake = result.at(-1)?.wakeCategory === 'H' ? 'M'
+      : heavyCount > mediumCount ? 'H' : null;
+    const eligible = holdingQueue.filter(entry => requiredWake === null || entry.flight.wakeCategory === requiredWake);
+    if (!eligible.length) {
+      const next = future.find(entry => entry.flight.wakeCategory === requiredWake);
+      if (!next) throw new Error('Không thể tách hai tàu H liên tiếp bằng tàu M trong lịch còn lại.');
+      clock = Math.max(clock, next.taxiComplete);
+      continue;
     }
-
-    let item = holdingQueue.shift()!;
-    const earliestTakeoff = Math.max(item.taxiComplete + RUNWAY_MOVEMENT_MS, runwayAvailable, item.slot - 5 * 60_000);
-    while (nextArrival < arrivals.length && arrivals[nextArrival].taxiComplete <= earliestTakeoff) holdingQueue.push(arrivals[nextArrival++]);
+    const earliestFor = (entry: QueueEntry) => Math.max(entry.taxiComplete + RUNWAY_MOVEMENT_MS, runwayAvailable,
+      entry.slot - 5 * 60_000, entry.flight.forceCtotMiss && !entry.hadMissed ? entry.flight.ctot + 600_001 : -Infinity);
+    eligible.sort((a, b) => earliestFor(a) - earliestFor(b) || a.slot - b.slot || a.flight.id.localeCompare(b.flight.id));
+    let item = holdingQueue.splice(holdingQueue.indexOf(eligible[0]), 1)[0];
     const forcedMiss = Boolean(item.flight.forceCtotMiss && !item.hadMissed);
+    const earliestTakeoff = Math.max(item.taxiComplete + RUNWAY_MOVEMENT_MS, runwayAvailable, item.slot - 5 * 60_000,
+      forcedMiss ? item.flight.ctot + 10 * 60_000 + 1 : -Infinity);
+    if (nextArrival < arrivals.length && arrivals[nextArrival].taxiComplete + RUNWAY_MOVEMENT_MS < earliestTakeoff) {
+      holdingQueue.push(item);
+      clock = Math.max(clock, arrivals[nextArrival].taxiComplete);
+      continue;
+    }
+    while (nextArrival < arrivals.length && arrivals[nextArrival].taxiComplete <= earliestTakeoff) holdingQueue.push(arrivals[nextArrival++]);
     const originalWindowMissed = forcedMiss || !isWithinCtotWindow(new Date(earliestTakeoff), new Date(item.slot));
     if (originalWindowMissed && !item.hadMissed) {
       const route = taxiRoutes(item.flight.stand)[0]?.points ?? [];

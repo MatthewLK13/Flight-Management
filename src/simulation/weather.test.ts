@@ -36,7 +36,7 @@ describe('manual adverse weather', () => {
     expect(Math.hypot(before.x - after.x, before.y - after.y)).toBeLessThan(0.01);
     const recovered = applyWeatherPeriods(base, [], [{ start: 11 * minute, end: 50 * minute }], '25L-25R').flights[0];
     expect(recovered.reissuedTsat).toBeGreaterThanOrEqual(50 * minute);
-    expect(recovered.reissuedCtot).toBe(recovered.wheelsOff);
+    expect(recovered.reissuedCtot).toBeNull();
     const events = weatherDclEvents([recovered], [{ start: 11 * minute, end: 50 * minute }]);
     expect(events.every((event) => formatDclMessage(event.message).length > 1)).toBe(true);
     expect(events.some((event) => event.message.includes('TSAT REVISED'))).toBe(true);
@@ -133,9 +133,14 @@ describe('weather recovery with bundled workbooks', () => {
     expect(plan.flights.every((item) => Number.isFinite(item.wheelsOff))).toBe(true);
     for (let index = 0; index < plan.flights.length; index += 1) {
       const item = plan.flights[index];
-      const slot = item.reissuedCtot ?? item.ctot;
-      expect(item.wheelsOff).toBeGreaterThanOrEqual(slot - 5 * minute);
-      expect(item.wheelsOff).toBeLessThanOrEqual(slot + 10 * minute);
+      if (item.reissuedTsat !== null) {
+        expect(item.reissuedCtot).toBeNull();
+        expect(item.wheelsOff).toBeGreaterThanOrEqual(item.reissuedTsat + item.taxiMinutes * minute);
+      } else {
+        const slot = item.reissuedCtot ?? item.ctot;
+        expect(item.wheelsOff).toBeGreaterThanOrEqual(slot - 5 * minute);
+        expect(item.wheelsOff).toBeLessThanOrEqual(slot + 10 * minute);
+      }
       if (index > 0) {
         expect(item.runwayEntryStart).toBeGreaterThanOrEqual(plan.flights[index - 1].wheelsOff);
         expect(item.wakeCategory === 'H' && plan.flights[index - 1].wakeCategory === 'H').toBe(false);

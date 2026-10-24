@@ -5,6 +5,7 @@ import { departurePosition } from '../map/playback';
 import { getNearestReturnStand, getTaxiRoutePoints, type MapPoint } from '../map/airfieldGeometry';
 import type { DclEvent } from '../dcl/dclScenario';
 import { ctotDelayMinutes } from './ctot';
+import { releaseTakeoffRoll, arrivalDelayForBookedRolls } from './runwayCoordination';
 import { distanceAlongPathToPoint } from '../map/surfaceGraph';
 
 const MINUTE = 60_000;
@@ -185,11 +186,16 @@ function applyPeriod(departures: TimelineItem[], inbound: ArrivalTimelineItem[],
       }
       let [flight] = pending.splice(index, 1);
       let wheelsOff = Math.max(earliest(flight), available);
-      for (const crossing of inbound.filter((arrival) => arrival.crossingStart < period.start).sort((a, b) => a.crossingStart - b.crossingStart)) {
-        if (wheelsOff - MOVEMENT < crossing.crossingEnd + 10_000 && wheelsOff > crossing.crossingStart) {
-          wheelsOff = crossing.crossingEnd + 10_000 + MOVEMENT;
+      let previousTakeoff: number;
+      do {
+        previousTakeoff = wheelsOff;
+        wheelsOff = releaseTakeoffRoll(wheelsOff - TAKEOFF_ROLL_MS, inbound) + TAKEOFF_ROLL_MS;
+        for (const crossing of inbound.filter((arrival) => arrival.crossingStart < period.start).sort((a, b) => a.crossingStart - b.crossingStart)) {
+          if (wheelsOff - MOVEMENT < crossing.crossingEnd + 10_000 && wheelsOff > crossing.crossingStart) {
+            wheelsOff = crossing.crossingEnd + 10_000 + MOVEMENT;
+          }
         }
-      }
+      } while (Number.isFinite(wheelsOff) && wheelsOff > previousTakeoff);
       const state = currentState(flight);
       const previous = state?.previous ?? flight;
       if (Number.isFinite(wheelsOff) && (state?.missedAt ?? null) === null && wheelsOff > activeSlot(previous) + 10 * MINUTE) {
@@ -212,7 +218,9 @@ function applyPeriod(departures: TimelineItem[], inbound: ArrivalTimelineItem[],
   const arrivals = [...inbound].sort((a, b) => a.touchdown - b.touchdown || a.id.localeCompare(b.id)).map((previous) => {
     let arrival = previous;
     if (previous.approachStart >= period.start) {
-      const approachStart = Math.max(previous.approachStart, release, landingAvailable);
+      let approachStart = Math.max(previous.approachStart, release, landingAvailable);
+      const provisional = { ...previous, approachStart, touchdown: previous.touchdown + approachStart - previous.approachStart };
+      approachStart += arrivalDelayForBookedRolls(provisional, 0, flights.map(flight => flight.takeoffRollStart));
       const delay = approachStart - previous.approachStart;
       if (delay > 0) arrival = {
         ...previous, weather: { ...period, previous }, approachStart,

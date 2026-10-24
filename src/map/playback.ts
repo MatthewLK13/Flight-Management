@@ -2,7 +2,7 @@ import { surfacePosition } from '../simulation/surfaceTraffic';
 import type { ArrivalTimelineItem } from '../simulation/arrivals';
 import { TAKEOFF_ROLL_MS, type TimelineItem } from '../simulation/runSimulation';
 
-import { AIRBORNE_VISIBLE_MS, TAKEOFF_METRES_PER_SECOND, METRES_PER_PIXEL, takeoffDistanceProgress } from '../simulation/movementPhysics';
+import { AIRBORNE_VISIBLE_MS, RUNWAY_ENTRY_MS, TAKEOFF_METRES_PER_SECOND, METRES_PER_PIXEL, takeoffDistanceProgress } from '../simulation/movementPhysics';
 export const TAKEOFF_VISIBLE_AFTER_MS = AIRBORNE_VISIBLE_MS;
 import { getArrivalRoutePoints, getHoldingPoint, getRunwaySegment, getStandPoint, getTaxiRoutePoints, pointAlongPath, type MapPoint } from './airfieldGeometry';
 
@@ -26,7 +26,7 @@ export function departurePosition(flight: TimelineItem, time: number, queueIndex
         point: getStandPoint(weather.returnStand), phase: `chờ TSAT/CTOT mới tại stand ${weather.returnStand}`, rotation: 0,
       };
     }
-    if (missed && !weather.returnStand) return {
+    if (missed && !weather.returnStand && time < flight.runwayEntryStart) return {
       ...departurePosition(weather.previous, Math.min(time, weather.previous.runwayEntryStart - 1), queueIndex, runway),
       phase: 'không tuân thủ CTOT · chờ vị trí đỗ trống',
     };
@@ -71,9 +71,13 @@ export function departurePosition(flight: TimelineItem, time: number, queueIndex
   if (time < flight.runwayEntryStart) return {
     point: queueIndex <= 0 ? hold : { x: hold.x - queueIndex * 25, y: hold.y }, phase: 'chờ tại S1', rotation: 0,
   };
-  if (time < flight.takeoffRollStart) return {
-    point: pointAlongPath(runwaySegment.entryPath, (time - flight.runwayEntryStart) / (flight.takeoffRollStart - flight.runwayEntryStart)),
+  const entryEnd = flight.runwayEntryStart + RUNWAY_ENTRY_MS;
+  if (time < entryEnd) return {
+    point: pointAlongPath(runwaySegment.entryPath, (time - flight.runwayEntryStart) / RUNWAY_ENTRY_MS),
     phase: 'vào đường băng 25L', rotation: -90,
+  };
+  if (time < flight.takeoffRollStart) return {
+    point: runwaySegment.threshold, phase: 'chờ tàu đến vượt 25R', rotation: -90,
   };
   if (time >= flight.wheelsOff) return { point: { x: runwaySegment.rollEnd.x - (time - flight.wheelsOff) / 1000 * TAKEOFF_METRES_PER_SECOND / METRES_PER_PIXEL, y: runwaySegment.rollEnd.y - (time - flight.wheelsOff) / 1000 * 4 }, phase: 'đã cất cánh 25L', rotation: -90 };
   return { point: pointAlongPath([runwaySegment.threshold, runwaySegment.rollEnd], takeoffDistanceProgress((time - flight.takeoffRollStart) / TAKEOFF_ROLL_MS)), phase: 'cất cánh 25L', rotation: -90 };

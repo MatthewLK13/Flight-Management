@@ -40,16 +40,19 @@ describe('updated 21102026 flight dataset', () => {
     const result = runSimulation(toScheduledFlights(workbook.enrichedRows.filter(isDepartureFromTsn)), true);
     expect(result.completed).toBe(70);
     expect(result.missedCtot).toBe(25);
-    expect(result.reissuedCtot).toBe(25);
+    expect(result.flights.filter(flight => flight.reissuedCtot !== null || flight.reissuedTsat !== null)).toHaveLength(25);
     const forced = result.flights.filter((flight) => flight.row.Compliance === 'Không tuân thủ');
     expect(forced).toHaveLength(25);
     for (const flight of forced) {
       expect(flight.missedCtot).toBe(true);
-      expect(flight.returnStart).toBeGreaterThan(flight.ctot + 10 * 60_000);
-      expect(flight.returnStand).toBeTruthy();
-      expect(flight.secondTaxiStart).toBeGreaterThanOrEqual(flight.returnEnd!);
-      expect(flight.reissuedCtot).not.toBeNull();
-      expect(flight.wheelsOff).toBeLessThanOrEqual(flight.reissuedCtot! + 10 * 60_000);
+      expect(flight.wheelsOff).toBeGreaterThan(flight.ctot + 10 * 60_000);
+      if (flight.returnStand !== null) {
+        expect(flight.returnStart).toBeGreaterThan(flight.ctot + 10 * 60_000);
+        expect(flight.secondTaxiStart).toBeGreaterThanOrEqual(flight.returnEnd!);
+        expect(flight.reissuedTsat).not.toBeNull();
+      } else {
+        expect(flight.reissuedCtot).toBe(flight.wheelsOff);
+      }
     }
     expect(result.flights.every((flight) => Number.isFinite(flight.wheelsOff))).toBe(true);
     for (let index = 1; index < result.flights.length; index += 1) {

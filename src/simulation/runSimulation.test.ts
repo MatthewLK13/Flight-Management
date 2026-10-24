@@ -31,7 +31,7 @@ describe('runSimulation', () => {
 describe('holding point queue', () => {
   it('moves a missed CTOT flight to the queue tail and issues a new CTOT', () => {
     const flights = toScheduledFlights(Array.from({ length: 7 }, (_, i) => ({
-      CallSign: `VN${String(i + 1).padStart(3, '0')}`,
+      Stand: '71', CallSign: `VN${String(i + 1).padStart(3, '0')}`,
       ScheduledDeparture: '2023-11-03T08:00:00Z',
       CTOT: '2023-11-03T08:00:00Z', TaxiMinutes: 2,
     })));
@@ -39,7 +39,7 @@ describe('holding point queue', () => {
     const missed = result.flights.find((flight) => flight.missedCtot);
     expect(missed).toBeDefined();
     expect(missed?.order).toBeGreaterThan(5);
-    expect(missed?.reissuedCtot).not.toBeNull();
+    expect(missed!.reissuedCtot ?? missed!.reissuedTsat).not.toBeNull();
   });
 });
 
@@ -61,7 +61,7 @@ describe('wake category separation', () => {
 describe('baseline comparison', () => {
   it('keeps the proposed schedule no worse than the baseline wait objective', () => {
     const flights = toScheduledFlights(Array.from({ length: 80 }, (_, index) => ({
-      CallSign: `VN${index}`,
+      Stand: '71', CallSign: `VN${index}`,
       ScheduledDeparture: new Date(Date.parse('2023-11-03T04:00:00Z') + ((index * 137) % 180) * 60_000).toISOString(),
       CTOT: new Date(Date.parse('2023-11-03T04:00:00Z') + ((index * 149) % 180) * 60_000).toISOString(),
       TaxiMinutes: 5 + (index % 7),
@@ -73,7 +73,7 @@ describe('baseline comparison', () => {
 describe('taxiway occupancy', () => {
   it('keeps departures at least two minutes apart at the shared taxiway entry', () => {
     const flights = toScheduledFlights(Array.from({ length: 3 }, (_, index) => ({
-      CallSign: `VN${index + 1}`,
+      Stand: '71', CallSign: `VN${index + 1}`,
       ScheduledDeparture: '2023-11-03T08:00:00Z',
       CTOT: new Date(Date.parse('2023-11-03T08:30:00Z') + index * 60_000).toISOString(),
       TaxiMinutes: 8,

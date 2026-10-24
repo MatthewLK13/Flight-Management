@@ -8,6 +8,7 @@ import { runSimulation, toScheduledFlights } from './runSimulation';
 import { planSurfaceTraffic } from './surfaceTraffic';
 import { scheduleArrivals } from './arrivals';
 import { RUNWAY_CLEARANCE_MS } from './movementPhysics';
+import { arrivalThresholdClearAt } from './runwayCoordination';
 
 it('plans a 650-movement day without collisions, repeated P5 waits, or overlapping runway operations', async () => {
   const bytes = readFileSync('public/samples/3-days.xls');
@@ -25,6 +26,7 @@ it('plans a 650-movement day without collisions, repeated P5 waits, or overlappi
   }
   for (const arrival of plan.arrivals) for (const departure of plan.flights) {
     expect(arrival.crossingEnd <= departure.runwayEntryStart || arrival.crossingStart >= departure.wheelsOff + RUNWAY_CLEARANCE_MS).toBe(true);
+    expect(departure.takeoffRollStart < arrival.approachStart || departure.takeoffRollStart >= arrivalThresholdClearAt(arrival)).toBe(true);
   }
   const all = [...plan.flights, ...plan.arrivals].sort((a, b) => a.surfacePlan!.visibleFrom - b.surfacePlan!.visibleFrom);
   const end = Math.max(...all.map((flight) => flight.surfacePlan!.visibleUntil));

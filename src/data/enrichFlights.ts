@@ -10,7 +10,7 @@ const DOMESTIC_STANDS = [
 ];
 const INTERNATIONAL_STANDS = Array.from({ length: 8 }, (_, index) => String(index + 9));
 const DEPARTURE_TIME_FIELDS = ['ScheduledDeparture', 'STD', 'DepartureTime', 'DeliveryTime', 'Giờ khởi hành', 'STD (UTC)'];
-const ARRIVAL_TIME_FIELDS = ['ATA', 'STA'];
+const ARRIVAL_TIME_FIELDS = ['ScheduledArrival', 'ATA', 'STA'];
 
 function hashText(input: string): number {
   let hash = 2166136261;
@@ -103,6 +103,11 @@ export function enrichFlights(rows: FlightRow[], sourceName = 'sample'): FlightR
     const standReady = Math.max(item.schedule.getTime(), standAvailable.get(assigned) ?? -Infinity);
     standAvailable.set(assigned, item.direction === 'ARR' ? standReady + 45 * 60_000 : standReady + 5 * 60_000);
     const departure = item.direction === 'DEP';
+    // A synthetic slot must be feasible after stand allocation; otherwise the
+    // mock data itself creates hours of CTOT violations before scheduling.
+    const providedCtot = departure ? sourceTime(item.row, item.day, ['CTOT']) : null;
+    const ctot = departure && item.ctot && !providedCtot
+      ? new Date(item.ctot.getTime() + standReady - item.schedule.getTime()) : item.ctot;
     outputs.set(item.index, {
       ...item.row,
       CallSign: item.identity,
@@ -112,7 +117,7 @@ export function enrichFlights(rows: FlightRow[], sourceName = 'sample'): FlightR
       Stand: assigned,
       ScheduledDeparture: departure ? (item.row.ScheduledDeparture || item.schedule.toISOString()) : '',
       ScheduledArrival: !departure ? (item.row.ScheduledArrival || item.schedule.toISOString()) : '',
-      CTOT: departure ? (item.ctot && !Number.isNaN(item.ctot.getTime()) ? item.ctot.toISOString() : item.schedule.toISOString()) : '',
+      CTOT: departure ? (ctot && !Number.isNaN(ctot.getTime()) ? ctot.toISOString() : item.schedule.toISOString()) : '',
       TSAT: departure ? (item.row.TSAT || new Date(standReady).toISOString()) : '',
       StandReadyAt: departure ? (item.row.StandReadyAt || new Date(standReady).toISOString()) : '',
       TaxiMinutes: item.row.TaxiMinutes || item.taxiMinutes,

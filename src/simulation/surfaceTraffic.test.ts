@@ -9,6 +9,7 @@ import { taxiRoutes, pathLength } from '../map/surfaceGraph';
 import { runSimulation, toScheduledFlights } from './runSimulation';
 import { planSurfaceTraffic } from './surfaceTraffic';
 import { scheduleArrivals } from './arrivals';
+import { arrivalThresholdClearAt } from './runwayCoordination';
 import { TAKEOFF_ROLL_MS, TAKEOFF_METRES_PER_SECOND, RUNWAY_LENGTH_METRES, METRES_PER_PIXEL } from './movementPhysics';
 
 describe('calibrated surface traffic', () => {
@@ -43,8 +44,8 @@ describe('calibrated surface traffic', () => {
     const preferred = getArrivalRoutePoints('16', 'P4');
     const fallback = getArrivalRoutePoints('16', 'P5');
     expect(preferred.toHold.at(-1)).toEqual(fallback.toHold.at(-1));
-    expect(preferred.toHold[0].x).toBe(758);
-    expect(fallback.toHold[0].x).toBe(585);
+    expect(preferred.toHold[0].x).toBe(620);
+    expect(fallback.toHold[0].x).toBe(475);
     expect(preferred.toHold).not.toEqual(fallback.toHold);
   });
 
@@ -56,16 +57,22 @@ describe('calibrated surface traffic', () => {
     const raw = runSimulation(toScheduledFlights(workbook.enrichedRows.filter(isDepartureFromTsn)), true);
     const plan = planSurfaceTraffic(raw.flights, scheduleArrivals(workbook.enrichedRows.filter(isArrivalAtTsn), raw.flights), '25L-25R');
     expect(plan.flights).toHaveLength(70); expect(plan.arrivals).toHaveLength(30);
+    expect(plan.flights.reduce((sum, flight) => sum + flight.waitMinutes, 0)).toBeLessThan(1500);
     for (const flight of plan.flights) {
       expect(flight.surfacePlan).toBeDefined();
       expect(flight.wheelsOff - flight.takeoffRollStart).toBeCloseTo(TAKEOFF_ROLL_MS, 2);
       if (flight.forceCtotMiss) {
+        expect(flight.missedCtot).toBe(true);
+        expect(flight.wheelsOff).toBeGreaterThan(flight.ctot + 600_000);
+      }
+      if (flight.returnStart !== null) {
         expect(flight.returnStart).toBeGreaterThan(flight.ctot + 600_000);
         expect(flight.secondTaxiStart).toBeGreaterThan(flight.returnEnd!);
       }
     }
     for (const arrival of plan.arrivals) for (const departure of plan.flights) {
       expect(arrival.crossingEnd <= departure.runwayEntryStart || arrival.crossingStart >= departure.wheelsOff).toBe(true);
+      expect(departure.takeoffRollStart < arrival.approachStart || departure.takeoffRollStart >= arrivalThresholdClearAt(arrival)).toBe(true);
     }
     const all = [...plan.flights, ...plan.arrivals];
     const start = Math.min(...all.map((flight) => flight.surfacePlan!.visibleFrom));

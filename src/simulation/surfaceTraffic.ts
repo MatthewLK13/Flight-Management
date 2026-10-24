@@ -6,6 +6,7 @@ import { taxiDuration, landingRollDuration, RUNWAY_ENTRY_MS, TAKEOFF_ROLL_MS, RU
 import type { TimelineItem } from './runSimulation';
 import type { ArrivalTimelineItem } from './arrivals';
 import { ctotDelayMinutes } from './ctot';
+import { releaseTakeoffRoll, arrivalDelayForBookedRolls } from './runwayCoordination';
 
 export type SurfaceLeg = { start: number; end: number; points: MapPoint[]; phase: string };
 export type SurfacePlan = { visibleFrom: number; visibleUntil: number; legs: SurfaceLeg[]; route: string };
@@ -105,51 +106,59 @@ export function planSurfaceTraffic(departures: TimelineItem[], inbound: ArrivalT
         for (const route of taxiRoutes(stand)) {
           const taxiMs = taxiDuration(pathLength(route.points));
           const entry = Math.max(source.runwayEntryStart + delay, source.readyAt + taxiMs);
-          const projectedWheelsOff = entry + RUNWAY_ENTRY_MS + TAKEOFF_ROLL_MS;
-          const inboundClearAt = inbound.reduce((latest, arrival) =>
-            arrival.touchdown <= projectedWheelsOff ? Math.max(latest, arrival.landingEnd) : latest, -Infinity);
-          if (entry + RUNWAY_ENTRY_MS < inboundClearAt) {
-            nextDelay = Math.min(nextDelay, delay + inboundClearAt - (entry + RUNWAY_ENTRY_MS));
-            continue;
-          }
           const legs: SurfaceLeg[] = [];
           let taxiStart = entry - taxiMs;
-          const wheelsOffProjected = entry + RUNWAY_ENTRY_MS + TAKEOFF_ROLL_MS;
+          const wheelsOffProjected = releaseTakeoffRoll(entry + RUNWAY_ENTRY_MS, inbound) + TAKEOFF_ROLL_MS;
           const groundMiss = wheelsOffProjected > source.ctot + 600_000;
           const commitDistance = distanceAlongPathToPoint(route.points);
           const commitAt = commitDistance === null ? Infinity : taxiStart + taxiMs * commitDistance / Math.max(1, pathLength(route.points));
           const passedCommitPoint = source.missedCtot && source.returnStand === null
             || commitAt <= source.ctot + 600_000;
           const mustReturnToStand = groundMiss && !passedCommitPoint;
-          const needsReturn = mustReturnToStand || (source.returnStart !== null && !passedCommitPoint);
+          const originalReturnPlanned = source.returnStart !== null && source.returnStand !== null;
+          let expiredAtStand = !originalReturnPlanned && taxiStart >= source.ctot + 600_000;
+          const needsReturn = !expiredAtStand && (mustReturnToStand || (source.returnStart !== null && !passedCommitPoint));
           let returnStart = needsReturn ? source.returnStart ?? Math.max(source.ctot + 600_001, source.readyAt + taxiMs) : null;
           let returnEnd = needsReturn ? source.returnEnd : null;
           let secondTaxiStart = needsReturn ? source.secondTaxiStart : null;
-          const returnStand = needsReturn
+          let returnStand = needsReturn
             ? source.returnStand ?? getNearestReturnStand(stand, new Set(), source.wakeCategory) : null;
           if (returnStart !== null && returnStand) {
-            // The scripted expiry occurs at S1; schedule its first taxi just in time.
-            returnStart += delay;
+            // Keep the first trip independent of the revised departure slot.
+            // Moving its expiry by the full slot delay compounds every later delay.
+            if (originalReturnPlanned) taxiStart = source.taxiStart;
+            returnStart = Math.max(returnStart, taxiStart + taxiMs);
             taxiStart = Math.max(source.readyAt, returnStart - taxiMs);
-            returnStart = taxiStart + taxiMs;
             legs.push(parked(stand, Math.max(source.readyAt - 120_000, taxiStart - 120_000), taxiStart));
             legs.push(leg(taxiStart, returnStart, route.points, 'lăn ra điểm chờ S1'));
             const back = taxiRoutes(returnStand, 'S1')[0].points;
             returnEnd = returnStart + taxiDuration(pathLength(back));
             legs.push(leg(returnStart, returnEnd, back, 'không tuân thủ CTOT · quay về vị trí đỗ'));
-            secondTaxiStart = Math.max(returnEnd + 120_000, entry - taxiDuration(pathLength(taxiRoutes(returnStand)[0].points)));
-            legs.push(parked(returnStand, returnEnd, secondTaxiStart));
             const outbound = taxiRoutes(returnStand)[0].points;
-            legs.push(leg(secondTaxiStart, secondTaxiStart + taxiDuration(pathLength(outbound)), outbound, 'lăn theo TSAT mới'));
-          } else {
+            secondTaxiStart = Math.max(returnEnd + 120_000, entry - taxiDuration(pathLength(outbound)));
+            if (reservations.available([...legs, parked(returnStand, returnEnd, secondTaxiStart)], radius)) {
+              legs.push(parked(returnStand, returnEnd, secondTaxiStart));
+              legs.push(leg(secondTaxiStart, secondTaxiStart + taxiDuration(pathLength(outbound)), outbound, 'lăn theo TSAT mới'));
+            } else {
+              // No pushback clearance is issued for an already occupied first route.
+              // The aircraft remains at its stand and receives a revised TSAT.
+              legs.length = 0;
+              returnStart = null; returnEnd = null; returnStand = null; secondTaxiStart = null;
+              taxiStart = entry - taxiMs;
+              expiredAtStand = taxiStart >= source.ctot + 600_000;
+            }
+          }
+          if (!legs.length) {
             legs.push(parked(stand, Math.max(source.readyAt - 120_000, taxiStart - 120_000), taxiStart));
             legs.push(leg(taxiStart, entry, route.points, 'lăn ra điểm chờ S1'));
           }
           const runwayEntryStart = Math.max(entry, legs.at(-1)!.end);
           if (legs.at(-1)!.end < runwayEntryStart) legs.push(leg(legs.at(-1)!.end, runwayEntryStart, [route.points.at(-1)!], 'chờ tại S1'));
           const segment = getRunwaySegment(runway);
-          const takeoffRollStart = runwayEntryStart + RUNWAY_ENTRY_MS, wheelsOff = takeoffRollStart + TAKEOFF_ROLL_MS;
-          legs.push(leg(runwayEntryStart, takeoffRollStart, segment.entryPath, 'vào đường băng 25L'));
+          const entryEnd = runwayEntryStart + RUNWAY_ENTRY_MS;
+          const takeoffRollStart = releaseTakeoffRoll(entryEnd, inbound), wheelsOff = takeoffRollStart + TAKEOFF_ROLL_MS;
+          legs.push(leg(runwayEntryStart, entryEnd, segment.entryPath, 'vào đường băng 25L'));
+          if (takeoffRollStart > entryEnd) legs.push(leg(entryEnd, takeoffRollStart, [segment.threshold], 'chờ tàu đến vượt 25R'));
           // Reservation samples follow the same acceleration as the animation.
           const rollLegs = Array.from({ length: Math.ceil(TAKEOFF_ROLL_MS / STEP) }, (_, i) => {
             const start = i * STEP, end = Math.min(TAKEOFF_ROLL_MS, (i + 1) * STEP);
@@ -166,8 +175,8 @@ export function planSurfaceTraffic(departures: TimelineItem[], inbound: ArrivalT
           const returnedToStand = returnStart !== null && returnStand !== null;
           chosen = { ...source, stand, taxiStart, taxiMinutes: taxiMs / 60_000, runwayEntryStart, takeoffRollStart, wheelsOff,
             returnStart, returnEnd, returnStand, secondTaxiStart,
-            tsat: taxiStart, reissuedTsat: revised && returnedToStand ? secondTaxiStart ?? taxiStart : null,
-            reissuedCtot: revised && !returnedToStand ? wheelsOff : returnedToStand ? null : source.reissuedCtot,
+            tsat: taxiStart, reissuedTsat: revised && (returnedToStand || expiredAtStand) ? secondTaxiStart ?? taxiStart : null,
+            reissuedCtot: revised && !returnedToStand && !expiredAtStand ? wheelsOff : null,
             missedCtot: revised, status: revised ? 'Không tuân thủ CTOT' : source.status,
             waitMinutes: ctotDelayMinutes(wheelsOff, source.ctot),
             surfacePlan: { visibleFrom: legs[0].start, visibleUntil: wheelsOff + 8000, legs, route: route.label } };
@@ -184,7 +193,7 @@ export function planSurfaceTraffic(departures: TimelineItem[], inbound: ArrivalT
   let landingAvailable = -Infinity;
   const arrivals = [...inbound].sort((a, b) => a.touchdown - b.touchdown).map((source) => {
     let chosen: ArrivalTimelineItem | undefined;
-    let delay = Math.max(0, landingAvailable - source.touchdown);
+    let delay = arrivalDelayForBookedRolls(source, Math.max(0, landingAvailable - source.touchdown), flights.map(flight => flight.takeoffRollStart));
     while (!chosen && delay < MAX_RESCHEDULE_MS) {
       let nextDelay = Infinity;
       for (const branch of ['P4', 'P5'] as const) {
@@ -217,7 +226,7 @@ export function planSurfaceTraffic(departures: TimelineItem[], inbound: ArrivalT
         landingAvailable = landingEnd + 60_000;
         break;
       }
-      if (!chosen) delay = Number.isFinite(nextDelay) ? nextDelay : delay + STEP;
+      if (!chosen) delay = arrivalDelayForBookedRolls(source, Number.isFinite(nextDelay) ? nextDelay : delay + STEP, flights.map(flight => flight.takeoffRollStart));
     }
     if (!chosen) throw new Error(`Không tìm được đường lăn an toàn cho ${source.callsign}.`);
     return chosen;
