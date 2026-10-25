@@ -8,9 +8,9 @@ const DOMESTIC_STANDS = [
   '77A', '79A', '81A',
   '104B', '104A', '103B', '103A', '102', '101', '100', '99', '98', '97', '96', '95', '94', '93', '92', '91',
 ];
-const INTERNATIONAL_STANDS = Array.from({ length: 16 }, (_, index) => String(index + 1));
+const INTERNATIONAL_STANDS = Array.from({ length: 8 }, (_, index) => String(index + 9));
 const DEPARTURE_TIME_FIELDS = ['ScheduledDeparture', 'STD', 'DepartureTime', 'DeliveryTime', 'Giờ khởi hành', 'STD (UTC)'];
-const ARRIVAL_TIME_FIELDS = ['ATA', 'STA'];
+const ARRIVAL_TIME_FIELDS = ['ScheduledArrival', 'ATA', 'STA'];
 
 function hashText(input: string): number {
   let hash = 2166136261;
@@ -47,6 +47,10 @@ function sourceTime(row: FlightRow, day: string, fields: string[]): Date | null 
     }
     if (typeof value === 'string' && value.trim()) {
       const text = value.trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+        const timestamp = new Date(text);
+        if (Number.isFinite(timestamp.getTime())) return timestamp;
+      }
       const time = text.match(/(?:^|T)(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*(AM|PM)?/i);
       if (time) {
         let hour = Number(time[1]);
@@ -80,7 +84,7 @@ export function enrichFlights(rows: FlightRow[], sourceName = 'sample'): FlightR
     })();
     const taxiMinutes = Number(row.TaxiMinutes) || 5 + (Math.floor(seed / 19) % 8);
     const ctot = direction === 'DEP'
-      ? row.CTOT ? new Date(String(row.CTOT)) : new Date(schedule.getTime() + (taxiMinutes + (Math.floor(seed / 11) % 11 - 3)) * 60_000)
+      ? sourceTime(row, day, ['CTOT']) ?? new Date(schedule.getTime() + (taxiMinutes + (Math.floor(seed / 11) % 11 - 3)) * 60_000)
       : null;
     return { row, index, seed, identity, day, schedule, ctot, taxiMinutes, direction, international };
   });
@@ -88,7 +92,8 @@ export function enrichFlights(rows: FlightRow[], sourceName = 'sample'): FlightR
   const outputs = new Map<number, FlightRow>();
   const sorted = [...prepared].sort((a, b) => a.schedule.getTime() - b.schedule.getTime() || a.index - b.index);
   for (const item of sorted) {
-    const eligible = item.international ? INTERNATIONAL_STANDS : DOMESTIC_STANDS;
+    const eligible = item.international ? INTERNATIONAL_STANDS : wakeCategory(item.row.PlaneTypeCode ?? item.row.AircraftType) === 'H'
+      ? Array.from({ length: 12 }, (_, index) => String(index + 23)) : DOMESTIC_STANDS;
     const existing = String(item.row.Stand ?? '').trim().toUpperCase();
     const rotated = [...eligible.slice(item.seed % eligible.length), ...eligible.slice(0, item.seed % eligible.length)];
     const assigned = existing && eligible.includes(existing) && (standAvailable.get(existing) ?? -Infinity) <= item.schedule.getTime()
@@ -98,6 +103,11 @@ export function enrichFlights(rows: FlightRow[], sourceName = 'sample'): FlightR
     const standReady = Math.max(item.schedule.getTime(), standAvailable.get(assigned) ?? -Infinity);
     standAvailable.set(assigned, item.direction === 'ARR' ? standReady + 45 * 60_000 : standReady + 5 * 60_000);
     const departure = item.direction === 'DEP';
+    // A synthetic slot must be feasible after stand allocation; otherwise the
+    // mock data itself creates hours of CTOT violations before scheduling.
+    const providedCtot = departure ? sourceTime(item.row, item.day, ['CTOT']) : null;
+    const ctot = departure && item.ctot && !providedCtot
+      ? new Date(item.ctot.getTime() + standReady - item.schedule.getTime()) : item.ctot;
     outputs.set(item.index, {
       ...item.row,
       CallSign: item.identity,
@@ -107,7 +117,7 @@ export function enrichFlights(rows: FlightRow[], sourceName = 'sample'): FlightR
       Stand: assigned,
       ScheduledDeparture: departure ? (item.row.ScheduledDeparture || item.schedule.toISOString()) : '',
       ScheduledArrival: !departure ? (item.row.ScheduledArrival || item.schedule.toISOString()) : '',
-      CTOT: departure ? (item.ctot && !Number.isNaN(item.ctot.getTime()) ? item.ctot.toISOString() : item.schedule.toISOString()) : '',
+      CTOT: departure ? (ctot && !Number.isNaN(ctot.getTime()) ? ctot.toISOString() : item.schedule.toISOString()) : '',
       TSAT: departure ? (item.row.TSAT || new Date(standReady).toISOString()) : '',
       StandReadyAt: departure ? (item.row.StandReadyAt || new Date(standReady).toISOString()) : '',
       TaxiMinutes: item.row.TaxiMinutes || item.taxiMinutes,

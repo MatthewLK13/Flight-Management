@@ -13,7 +13,13 @@ export function formatDclMessage(message: string): string[] {
     const body = match[5];
     if (body === 'RCD RECEIVED REQUEST BEING PROCESSED STANDBY') return [header, `${match[4]} RCD RECEIVED`, 'REQUEST BEING PROCESSED', 'STANDBY'];
     if (body === 'RCD REJECTED REVERT TO VOICE PROCEDURES') return [header, `${match[4]} RCD REJECTED`, 'REVERT TO VOICE PROCEDURES'];
-    if (body.startsWith('TSAT REVISED ')) return [header, `${match[4]} TSAT REVISED`, body.slice('TSAT REVISED '.length)];
+    if (body.startsWith('TSAT REVISED ')) return [header, `${match[4]} TSAT REVISED ${body.slice('TSAT REVISED '.length, 'TSAT REVISED '.length + 4)}`, ...body.slice('TSAT REVISED '.length + 4).trim().split(/ (?=CLEARANCE CONFIRMED|RETURNED TO STAND)/).filter(Boolean)];
+    if (body.startsWith('CTOT EXPIRED ')) {
+      const detail = body.slice('CTOT EXPIRED '.length).replace(' AWAIT NEW TSAT', '');
+      return [header, `${match[4]} CTOT EXPIRED`, detail, 'AWAIT NEW TSAT'];
+    }
+    if (body === 'ADVERSE WEATHER DEPARTURE CLEARANCES SUSPENDED STANDBY') return [header, 'ALL · ADVERSE WEATHER', 'DEPARTURE CLEARANCES SUSPENDED', 'STANDBY'];
+    if (body === 'WEATHER IMPROVED DEPARTURE CLEARANCES RESUMED') return [header, 'ALL · WEATHER IMPROVED', 'DEPARTURE CLEARANCES RESUMED'];
     return [header, `${match[4]} ${body}`];
   }
 

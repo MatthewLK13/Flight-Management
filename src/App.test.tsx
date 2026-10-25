@@ -38,5 +38,30 @@ describe('Flight operations dashboard', () => {
     await waitFor(() => expect(dclBoard).toHaveTextContent('CLD'));
     expect(dclBoard).toHaveTextContent('TSAT');
     expect(screen.getAllByText('VNA123').length).toBeGreaterThan(0);
+    const pause = screen.queryByRole('button', { name: /tạm dừng mô phỏng/i });
+    if (pause) fireEvent.click(pause);
+    const slider = screen.getByRole('slider', { name: /tua thời gian mô phỏng/i });
+    fireEvent.change(slider, { target: { value: '0' } });
+    expect(screen.getByText('TỔNG THỜI GIAN CHỜ').closest('article')?.querySelector('.kpi-value')).toHaveTextContent('0 phút');
+    const rain = screen.getByRole('switch', { name: 'Thời tiết xấu' });
+    fireEvent.click(rain);
+    expect(rain).toHaveAttribute('aria-checked', 'true');
+    fireEvent.change(slider, { target: { value: '600' } });
+    expect(screen.getByRole('region', { name: 'Hàng chờ cất cánh' })).toHaveTextContent('Không tuân thủ CTOT · chờ cấp lại');
+    fireEvent.click(rain);
+    expect(rain).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('region', { name: 'Hàng chờ cất cánh' })).toHaveTextContent('Đã cấp TSAT/CTOT mới');
+    expect(dclBoard).toHaveTextContent('TSAT REVISED');
+    const revised = document.querySelector('.time-cell')?.getAttribute('title')?.match(/TSAT mới (\d{2}):(\d{2})/);
+    expect(revised).not.toBeNull();
+    const startupMinute = Number(revised![1]) * 60 + Number(revised![2]);
+    let takeoffVisible = false;
+    for (let minute = startupMinute; minute <= startupMinute + 30 && !takeoffVisible; minute += 1) {
+      fireEvent.change(slider, { target: { value: String(minute) } });
+      takeoffVisible = screen.queryByRole('button', { name: /VNA123.*cất cánh 25L/i }) !== null;
+    }
+    expect(takeoffVisible).toBe(true);
+    fireEvent.change(slider, { target: { value: '1440' } });
+    expect(screen.getByText('TỔNG THỜI GIAN CHỜ').closest('article')?.querySelector('.kpi-value')).not.toHaveTextContent(/^0 phút$/);
   });
 });
