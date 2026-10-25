@@ -1,6 +1,6 @@
 import type { WakeCategory } from '../data/aircraft';
 import { pointAlongPath, type MapPoint } from './parkingGeometry';
-import { STAND_POINTS, INTERNATIONAL_BAYS, DOMESTIC_BAYS, HOLD_S1, P5_HOLD, RUNWAY_ENTRY, RUNWAY_END, taxiRoutes, runwayEntryPath, arrivalExitPaths } from './surfaceGraph';
+import { STAND_POINTS, INTERNATIONAL_BAYS, DOMESTIC_BAYS, HOLD_S1, P5_HOLD, RUNWAY_ENTRY, RUNWAY_END, taxiRoutes, runwayEntryPath, arrivalExitPaths, curve } from './surfaceGraph';
 export { pointAlongPath };
 export type { MapPoint };
 export const MAP_VIEWBOX = '0 0 2048 1413';
@@ -17,11 +17,20 @@ export function getRunwaySegment(_runway: string) {
 export function getTaxiRoutePoints(stand: string, _runway: string): MapPoint[] { return taxiRoutes(stand)[0].points; }
 export function getArrivalRoutePoints(stand: string, branch: 'P4' | 'P5' = 'P4') {
   const { exit, path } = arrivalExitPaths(branch);
+  const taxiPath = taxiRoutes(stand, 'P5')[0].points;
+  const join = taxiPath.findIndex(point => point.x === 580 && point.y === 559);
+  const crossingExit = { x: 440, y: 473 };
+  const toStand = join >= 0
+    ? [crossingExit, { x: 440, y: 488 },
+      ...curve({ x: 440, y: 488 }, { x: 450, y: 505 }, { x: 490, y: 533 }, { x: 520, y: 546 }).slice(1),
+      ...curve({ x: 520, y: 546 }, { x: 540, y: 558 }, { x: 553, y: 559 }, { x: 580, y: 559 }).slice(1),
+      ...taxiPath.slice(join + 1)]
+    : [...curve(crossingExit, { x: 440, y: 487 }, { x: 451, y: 495 }, { x: 475, y: 495 }), ...taxiPath.slice(1)];
   return {
     approach: [{ x: 1860, y: 227 }, { x: 1610, y: 227 }],
     landing: [{ x: 1610, y: 227 }, exit],
     toHold: path,
-    fromHold: [P5_HOLD, { x: 473, y: 411 }, { x: 475, y: 495 }, ...taxiRoutes(stand, 'P5')[0].points.slice(1)],
+    fromHold: [P5_HOLD, { x: 440, y: 411 }, crossingExit, ...toStand.slice(1)],
   };
 }
 export function getNearestReturnStand(originalStand: string, unavailable: Set<string>, category: WakeCategory): string {

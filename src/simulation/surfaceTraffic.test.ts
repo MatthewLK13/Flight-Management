@@ -44,8 +44,8 @@ describe('calibrated surface traffic', () => {
     const preferred = getArrivalRoutePoints('16', 'P4');
     const fallback = getArrivalRoutePoints('16', 'P5');
     expect(preferred.toHold.at(-1)).toEqual(fallback.toHold.at(-1));
-    expect(preferred.toHold[0].x).toBe(620);
-    expect(fallback.toHold[0].x).toBe(475);
+    expect(preferred.toHold[0].x).toBe(735);
+    expect(fallback.toHold[0].x).toBe(590);
     expect(preferred.toHold).not.toEqual(fallback.toHold);
   });
 

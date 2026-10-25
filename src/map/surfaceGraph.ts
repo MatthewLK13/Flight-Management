@@ -6,7 +6,7 @@ export const CHART_HEIGHT = 1413;
 export const S_Y = 495;
 export const V_Y = 559;
 export const HOLD_S1: MapPoint = { x: 1973, y: 476 };
-export const P5_HOLD: MapPoint = { x: 473, y: 366 };
+export const P5_HOLD: MapPoint = { x: 440, y: 332 };
 export const RUNWAY_ENTRY: MapPoint = { x: 1936, y: 411 };
 export const RUNWAY_END: MapPoint = { x: 54, y: 411 };
 
@@ -190,12 +190,15 @@ export function runwayEntryPath(): MapPoint[] {
 }
 
 export function arrivalExitPaths(branch: 'P4' | 'P5') {
-  // Runway exit points follow the actual P4/P5 connectors on the clean chart.
-  const exit = branch === 'P4' ? { x: 620, y: 227 } : { x: 475, y: 227 };
+  // Surveyed centrelines on PARKING_CHART_clean.png. Both exits lead
+  // westbound onto P4/P5 and stop north of the P5 runway holding markings.
+  const exit = branch === 'P4' ? { x: 735, y: 227 } : { x: 590, y: 227 };
   const path = branch === 'P4'
-    ? [...curve(exit, { x: 594, y: 227 }, { x: 548, y: 315 }, { x: 507, y: 315 }), { x: 507, y: 315 },
-      ...curve({ x: 507, y: 315 }, { x: 480, y: 315 }, { x: 473, y: 338 }, P5_HOLD).slice(1)]
-    : [...curve(exit, { x: 475, y: 254 }, { x: 480, y: 284 }, { x: 473, y: 315 }),
-      ...curve({ x: 473, y: 315 }, { x: 473, y: 334 }, { x: 473, y: 350 }, P5_HOLD).slice(1)];
+    ? [...curve(exit, { x: 718, y: 227 }, { x: 701, y: 233 }, { x: 680, y: 244 }),
+      ...curve({ x: 680, y: 244 }, { x: 620, y: 277 }, { x: 573, y: 315 }, { x: 520, y: 315 }).slice(1),
+      { x: 475, y: 315 },
+      ...curve({ x: 475, y: 315 }, { x: 457, y: 315 }, { x: 440, y: 321 }, P5_HOLD).slice(1)]
+    : [...curve(exit, { x: 560, y: 227 }, { x: 525, y: 245 }, { x: 480, y: 273 }),
+      ...curve({ x: 480, y: 273 }, { x: 455, y: 294 }, { x: 440, y: 314 }, P5_HOLD).slice(1)];
   return { exit, path };
 }
