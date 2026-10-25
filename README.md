@@ -1,13 +1,23 @@
-# Ứng dụng CPDLC–DCL trong quản lý luồng không lưu tại Cảng hàng không sân bay Tân Sơn Nhất
+# ỨNG DỤNG CPDLC–DCL TRONG QUẢN LÝ LUỒNG KHÔNG LƯU
+## TẠI CẢNG HÀNG KHÔNG SÂN BAY TÂN SƠN NHẤT
 
-Ứng dụng web mô phỏng quá trình khởi hành của nhiều chuyến bay tại Tân Sơn Nhất: đọc dữ liệu lịch bay, bố trí tàu bay trên parking chart, phát lại hành trình lăn và cất cánh, quản lý hàng chờ theo CTOT, đồng thời hiển thị chuỗi điện văn DCL theo thời gian mô phỏng. Giao diện bằng tiếng Việt và giữ các thuật ngữ hàng không cần thiết.
+**Nhóm 5 · Lớp 23ĐHKL01**
 
-> Đây là mô hình trình diễn phục vụ học tập. Tuyến đường, thời gian và điện văn do phần mềm mô phỏng; ứng dụng không kết nối với hệ thống điều hành bay thực tế.
+**[Truy cập ứng dụng](https://tsn-flight-management.vercel.app/)** · **[Chạy cục bộ](#cài-đặt-và-chạy-cục-bộ)** · **[Dữ liệu](#dữ-liệu-đầu-vào)** · **[Kiểm thử](#kiểm-thử)**
+
+Ứng dụng web mô phỏng phối hợp **tàu bay đi và đến tại VVTS**, kết hợp lịch TSAT/CTOT, chuyển động trên parking chart và chuỗi điện văn DCL. Người dùng có thể phát lại một ngày khai thác, theo dõi từng chuyến và bật mưa để quan sát quá trình xử lý chuyến quá hạn CTOT.
+
+Giao diện sử dụng tiếng Việt cùng thuật ngữ hàng không. Việc đọc workbook, tính lịch và phát lại diễn ra trong trình duyệt; ứng dụng có thể chạy cục bộ hoặc triển khai dưới dạng website tĩnh.
 
 ## Thông tin đề tài
 
-**Nhóm 8 · Lớp 23ĐHKL01**  
-**Giảng viên hướng dẫn:** Nguyễn Ngọc Hoàng Quân
+| Nội dung | Thông tin |
+| --- | --- |
+| Nhóm thực hiện | **Nhóm 5** |
+| Lớp | **23ĐHKL01** |
+| Giảng viên hướng dẫn | **Nguyễn Ngọc Hoàng Quân** |
+| Sân bay mô phỏng | Tân Sơn Nhất — **VVTS** |
+| Cấu hình khai thác | **25L / 25R** |
 
 | Thành viên | Mã số sinh viên |
 | --- | --- |
@@ -16,114 +26,351 @@
 | Phan Ngọc Trâm | 2331710044 |
 | Dương Thị Hương Thảo | 2331710038 |
 
-## Tính năng chính
+## Chức năng
 
-- **Dữ liệu sẵn dùng:** hai workbook mẫu 7 ngày và 3 ngày được tích hợp trong ứng dụng. Bộ 7 ngày tự nạp khi mở trang; có thể đổi sang bộ 3 ngày ngay trên giao diện.
-- **Nhập dữ liệu mới:** nhận tệp `.xls`, `.xlsx` hoặc `.csv`. Dữ liệu được đọc trong trình duyệt, lọc các chuyến khởi hành từ `VVTS` và bổ sung các trường còn thiếu để chạy mô phỏng.
-- **Parking chart:** hiển thị tàu bay tại stand, quá trình lăn từ stand đến điểm chờ, nhập đường băng và cất cánh. Có chọn chuyến, phóng to/thu nhỏ bản đồ và phát lại theo nhiều tốc độ.
-- **Hàng chờ CTOT:** áp dụng cửa sổ cất cánh từ **CTOT − 5 phút đến CTOT + 10 phút**. Chuyến quá hạn quay về vị trí đỗ trống gần nhất, chờ cấp TSAT/CTOT mới rồi tiếp tục khai thác.
-- **Thời tiết xấu thủ công:** nút bật/tắt mưa tác động trực tiếp lên dòng thời gian. Khi bật, hệ thống ngừng cấp phép cất/hạ cánh mới; tàu đã vào đường băng hoặc bắt đầu tiếp cận được hoàn tất chuyển động. Đồng hồ tiếp tục chạy để theo dõi hết hạn CTOT. Khi tắt, hệ thống tự cấp lịch mới, giữ khoảng cách đường băng, ưu tiên slot còn hiệu lực và không xếp hai tàu Heavy liên tiếp.
-- **Điện văn DCL:** phát các bước RCD, FSM, CLD, CDA theo kịch bản, trình bày từng trường của điện văn theo hàng dọc và đồng bộ với thời gian phát lại.
-- **Theo dõi kết quả:** hiển thị tổng chuyến, tổng thời gian chờ, số chuyến lỡ slot/cấp lại CTOT và danh sách chuyến cùng trạng thái hiện tại.
-- **Ghi kết quả:** với tệp mới được mở bằng trình duyệt hỗ trợ quyền ghi, có thể bổ sung các cột kết quả vào chính workbook nguồn.
+| Phân hệ | Khả năng hiện có |
+| --- | --- |
+| **Nguồn dữ liệu** | Bốn workbook tích hợp; nhập `.xlsx`, `.xls`, `.csv`; chọn ngày khai thác; đọc các sheet DEP/ARR nếu có |
+| **Parking chart** | Hiển thị vị trí tàu tại stand, đường lăn và đường băng; chọn chuyến; phóng to, thu nhỏ, đặt lại bản đồ |
+| **Tàu đi** | Rời stand, lăn đến S1, vào 25L, chờ tàu đến vượt mốc 25R khi cần, chạy đà và cất cánh |
+| **Tàu đến** | Tiếp cận 25R, hạ cánh, ưu tiên thoát P4, dùng P5 khi tuyến ưu tiên bận, chờ cắt 25L rồi lăn về stand |
+| **Điều phối** | Xét cửa sổ CTOT, hạng H/M, khả năng tiếp nhận của stand và chiếm dụng tuyến đường lăn |
+| **Thời tiết** | Bật/tắt thời tiết xấu thủ công; xử lý hết hạn CTOT; tự khôi phục lịch khi thời tiết tốt trở lại |
+| **Điện văn DCL** | RCD → FSM → CLD → CDA; nội dung theo từng dòng; thông báo hết hạn và điều chỉnh TSAT/CTOT |
+| **Phát lại** | Phát/tạm dừng, tua thời gian, tốc độ 1×, 10×, 30×, 60×; tiếp tục sang ngày kế tiếp nếu lịch kết thúc muộn |
+| **Theo dõi kết quả** | Tổng chuyến, tổng thời gian chờ, số chuyến không tuân thủ CTOT; hàng chờ có tìm kiếm và lọc trạng thái |
+| **Ghi workbook** | Ghi các trường kết quả vào tệp đã mở khi trình duyệt có quyền ghi trực tiếp |
 
-## Luồng mô phỏng
+## Quy tắc điều phối
+
+Các quy tắc dưới đây mô tả **mô hình đang được cài đặt trong ứng dụng**.
+
+### Luồng tàu bay
+
+| Luồng | Trình tự |
+| --- | --- |
+| **Khởi hành — DEP** | Stand → đường lăn sân đỗ → điểm chờ S1 → vào 25L → chạy đà → cất cánh |
+| **Hạ cánh — ARR** | Tiếp cận 25R → hạ cánh → nhánh thoát P4/P5 → điểm chờ P5 → cắt 25L → S8 → đường lăn V → stand |
+
+- Tàu đến ưu tiên **P4**; sử dụng **P5** khi tuyến ưu tiên không khả dụng.
+- Tàu đến phải chờ tại P5 nếu việc cắt 25L xung đột với lượt khởi hành.
+- Khi tàu đến đang trong đoạn tiếp cận được theo dõi, tàu đi chỉ được **bắt đầu chạy đà sau khi tàu đến vượt mốc 25R** trên chart. Tàu đi có thể vào 25L và chờ tại đó.
+- Nhánh thoát P4/P5, điểm chờ và đường cong S8 → V được căn theo ảnh `PARKING_CHART_clean.png`, trong hệ tọa độ gốc **2048 × 1413**.
+- Chuyến nội địa được phân bổ vào nhóm stand **DOM PAX TERMINAL/T3**; chuyến quốc tế vào nhóm stand **INTL PAX TERMINAL**. **Stand 16 thuộc khu quốc tế.**
+- Việc phân bổ xét nhóm chuyến bay, hạng tàu bay và thời điểm stand khả dụng; các giá trị tự sinh có tính tái lập với cùng dữ liệu nguồn.
+
+<details>
+<summary>Xem parking chart tham chiếu</summary>
+
+![Parking chart Tân Sơn Nhất](public/assets/PARKING_CHART_clean.png)
+
+</details>
+
+### Hạng tàu bay và tốc độ
+
+| Hạng | Các họ tàu bay được nhận diện | Tốc độ tiếp cận |
+| --- | --- | ---: |
+| **Heavy — H** | Boeing 747, 767, 777, 787; Airbus A330, A350 | **160 kts** |
+| **Medium — M** | Các loại còn lại trong phạm vi mô hình, gồm Boeing 737, Airbus A320/A321 và ATR 72 | **145 kts** |
+
+**Tốc độ lăn: 20 kts.** Mô hình cất cánh tăng tốc đến **150 kts** trên chiều dài đường băng mô phỏng **3.059 m**. Thời gian chạy đà và nội suy vị trí được liên kết để tàu di chuyển liên tục đến khi rời đường băng.
+
+Hai lượt **H không được đứng liên tiếp trong thứ tự cất cánh**. Lịch phải có đủ lượt M để thỏa điều kiện này; hệ thống báo lỗi nếu không thể tạo thứ tự hợp lệ.
+
+### TSAT, CTOT và điểm X
+
+| Thuật ngữ | Cách sử dụng trong ứng dụng |
+| --- | --- |
+| **TSAT — Target Start-Up Approval Time** | Mốc phê duyệt khởi động mục tiêu; trong mô hình gắn với thời điểm bắt đầu lăn/rời stand |
+| **CTOT — Calculated Take-Off Time** | Mốc cất cánh được cấp, có cửa sổ chấp nhận **−5 đến +10 phút** |
+| **ATD** | Mốc khởi hành thực tế dùng để tính kết quả; trong ứng dụng là thời điểm bánh rời đường băng, lưu ở `wheelsOff`/`ActualTakeoff` |
+| **Điểm X** | Điểm quyết định xử lý hết hạn CTOT trên tuyến lăn gần S1 |
+
+Cửa sổ hợp lệ bao gồm hai đầu mút:
 
 ```text
-Workbook mẫu hoặc tệp tải lên
-            ↓
-Chuẩn hóa chuyến đi từ VVTS và chuẩn bị CTOT / stand
-            ↓
-Sắp thứ tự khởi hành, xét cửa sổ CTOT và năng lực đường băng
-            ↓
-Stand → đường lăn → điểm chờ → nhập đường băng → cất cánh
-            ↓
-Phát điện văn DCL, cập nhật hàng chờ và các chỉ số
+CTOT − 5 phút ≤ thời điểm cất cánh ≤ CTOT + 10 phút
 ```
 
-Ứng dụng dùng cấu hình đường băng **25L / 25R**. Vị trí và đường đi trên chart là hình học mô phỏng gắn với ảnh parking chart; thời gian và thứ tự bay được tính từ dữ liệu đầu vào. Kết quả có tính tái lập với cùng bộ dữ liệu và ngày được chọn.
+| Trạng thái khi hết hạn CTOT | Cách xử lý |
+| --- | --- |
+| Còn tại stand | Tiếp tục chờ tại stand, nhận **TSAT mới** |
+| Đã lăn, chưa qua điểm X | Bố trí quay về vị trí đỗ khả dụng gần nhất và chờ cấp lịch mới |
+| Đã qua điểm X | Được tiếp tục khởi hành, đánh dấu **Không tuân thủ CTOT** và xử lý **CTOT mới** |
 
-## Bắt đầu trên máy
+Điều chỉnh được phân biệt theo vị trí: ở stand sử dụng **Revised TSAT**; khi đã ở ngoài sân đỗ sử dụng **Revised CTOT**. CTOT gốc được giữ làm mốc tính độ trễ.
 
-Yêu cầu **Node.js 20+** và trình duyệt hiện hành. Chrome hoặc Edge được khuyến nghị nếu cần ghi kết quả trở lại tệp đã chọn.
+### Cách tính tổng thời gian chờ
+
+Chỉ số **TỔNG THỜI GIAN CHỜ** phản ánh tổng độ trễ do vi phạm CTOT của các chuyến **đã thực sự cất cánh tại thời điểm phát lại**.
+
+```text
+Cất cánh trong cửa sổ CTOT:
+    Độ trễ chuyến = 0
+
+Cất cánh sau CTOT gốc + 10 phút:
+    Độ trễ chuyến = ATD − CTOT gốc
+
+Tổng thời gian chờ = tổng độ trễ các chuyến đã cất cánh
+```
+
+Ví dụ: CTOT gốc **10:12**, sau khi cấp lại lịch tàu thực sự cất cánh lúc **10:40** thì độ trễ là **28 phút**. Chuyến có CTOT **10:15** và cất cánh lúc **10:20** có độ trễ **0 phút** vì nằm trong cửa sổ cho phép.
+
+Thời gian lăn và thời gian phát lại từ đầu ngày không được cộng trực tiếp vào chỉ số này. Chuyến còn chờ hoặc chưa xuất hiện chưa đóng góp vào tổng độ trễ thực hiện.
+
+### Thời tiết xấu thủ công
+
+1. Chạy lịch và phát lại đến thời điểm muốn tạo tình huống.
+2. Bật **Thời tiết xấu** để dừng cấp phép cất/hạ cánh mới. Chuyển động đã được cho phép vào đường băng hoặc bắt đầu tiếp cận được xử lý theo trạng thái đang thực hiện.
+3. Đồng hồ tiếp tục chạy; hệ thống theo dõi CTOT và xử lý từng tàu theo vị trí, thời điểm hết hạn và khả năng tiếp nhận của stand.
+4. Tắt thời tiết xấu để khôi phục khai thác, cấp lại TSAT/CTOT theo trạng thái và tiếp tục điều phối.
+
+Các lần bật/tắt được lưu theo dòng thời gian. Khi tua về quá khứ rồi thay đổi thời tiết, kịch bản sau thời điểm đó được tính lại.
+
+## Điện văn DCL
+
+| Bản tin | Vai trò trong kịch bản |
+| --- | --- |
+| **RCD** | Tổ lái gửi yêu cầu huấn lệnh khởi hành |
+| **FSM** | Phản hồi đã nhận, đang xử lý, chờ, từ chối hoặc thông báo điều chỉnh |
+| **CLD** | Cấp huấn lệnh khởi hành, kèm thông tin TSAT |
+| **CDA** | Tổ lái xác nhận đã nhận huấn lệnh |
+
+Bảng DCL hiển thị **giờ LT, chiều trao đổi ACFT ↔ ATC, nội dung điện văn và kết quả**. Nội dung tách theo từng dòng và xuất hiện theo thời điểm trong kịch bản. Ví dụ CLD:
+
+```text
+CLD 1300 011026 VVTS PDC 001
+HVN1344 CLRD TO VVCR OFF
+25L VIA SID DEMO1
+SQUAWK 2201
+TSAT 1305
+```
+
+Kịch bản còn có nhánh từ chối/timeout, yêu cầu gửi lại, thông báo `CTOT EXPIRED`, `TSAT REVISED`, `CTOT REVISED` và khôi phục sau thời tiết xấu.
+
+## Dữ liệu đầu vào
+
+### Bốn workbook tích hợp
+
+| Bộ dữ liệu | Tệp | Phạm vi |
+| --- | --- | --- |
+| **Cập nhật 21.10.2026 — mặc định** | [`21102026.xlsx`](public/samples/21102026.xlsx) | Khai thác **01.10.2026**; **70 DEP + 30 ARR** |
+| Chuyên đề — tàu đi và đến | [`chuyen-de.xlsx`](public/samples/chuyen-de.xlsx) | Khai thác **01.10.2026**; **70 DEP + 30 ARR** |
+| Bộ dữ liệu 7 ngày | [`7-days.xls`](public/samples/7-days.xls) | **01–07.11.2023** |
+| Bộ dữ liệu 3 ngày | [`3-days.xls`](public/samples/3-days.xls) | **03–05.11.2023** |
+
+Trong `21102026.xlsx`, trường `Compliance` đánh dấu **25 chuyến “Không tuân thủ”** để tạo tình huống bắt buộc vượt hạn CTOT. Đây là dữ liệu điều khiển kịch bản, không chỉ là nhãn hiển thị. Các chuyến còn lại vẫn chịu tác động của mật độ khai thác, thời tiết và ràng buộc chung.
+
+Tên tệp cập nhật không thay thế ngày khai thác: ứng dụng đọc ngày từ dữ liệu bên trong workbook.
+
+### Định dạng và trường dữ liệu
+
+Hỗ trợ **`.xlsx`, `.xls`, `.csv`**. Nếu workbook có sheet `DEP` hoặc `ARR`, bộ đọc sử dụng các sheet này và xác định chiều chuyến theo tên sheet. Nếu không có, ứng dụng đọc sheet đầu tiên và phân loại theo sân bay đi/đến.
+
+| Trường | Nội dung |
+| --- | --- |
+| `CallSign` | Mã hiệu chuyến bay |
+| `FlyDate` / `Date` | Ngày khai thác |
+| `PlaneTypeCode` / `AircraftType` | Loại tàu bay, dùng xác định hạng H/M |
+| `AirportDeliveryCode` | Sân bay đi; chuyến đi từ Tân Sơn Nhất có giá trị `VVTS` |
+| `AirportReceiptCode` | Sân bay đến; chuyến đến Tân Sơn Nhất có giá trị `VVTS` |
+| `FlightDirection` | `DEP` hoặc `ARR` nếu được cung cấp |
+| `ScheduledDeparture` / `STD` / `DeliveryTime` | Mốc lịch của chuyến đi |
+| `ScheduledArrival` / `ATA` / `STA` | Mốc hạ cánh của chuyến đến, theo thứ tự ưu tiên bộ đọc |
+| `CTOT` | CTOT gốc; hỗ trợ ISO timestamp, giờ đồng hồ và phần ngày dạng số của Excel |
+| `TSAT`, `StandReadyAt`, `Stand` | Các mốc và vị trí đỗ nếu đã có |
+| `TaxiMinutes` | Thời gian lăn đầu vào; bước dựng hành trình tiếp tục xét chiều dài tuyến và tốc độ mô hình |
+| `Compliance` | `Không tuân thủ` kích hoạt kịch bản quá hạn CTOT bắt buộc |
+
+Ví dụ CSV cho một chuyến đi:
+
+```csv
+CallSign,FlyDate,PlaneTypeCode,AirportDeliveryCode,AirportReceiptCode,STD,CTOT,Compliance
+HVN1344,01/10/26,A321,VVTS,VVCR,13:05,13:20,Không tuân thủ
+```
+
+Các mốc chỉ có giờ được ghép với ngày khai thác. Timestamp ISO có múi giờ được giữ theo thời điểm đã cung cấp; giao diện hiển thị **LT theo múi giờ trình duyệt**. Với dữ liệu giờ địa phương Tân Sơn Nhất, máy chạy ứng dụng cần dùng múi giờ **UTC+7** để cách hiển thị nhất quán.
+
+### Chuẩn hóa và bổ sung
+
+- Trường thiếu có thể được sinh để phục vụ mô phỏng: lịch, CTOT, stand, hạng tàu bay và thông tin đường lăn.
+- **CTOT tự sinh** được xét sau phân bổ stand để tránh tạo slot hết hạn trước lúc tàu sẵn sàng. **CTOT có trong nguồn** được giữ làm mốc đánh giá.
+- Phân loại nội địa/quốc tế hiện dựa vào mã sân bay Việt Nam dạng `VVxx`; đây là quy tắc giản lược của mô hình.
+- Các giá trị tự sinh ổn định theo dữ liệu nguồn, không thay đổi ngẫu nhiên giữa mỗi lần chạy cùng đầu vào.
+- Chạy mô phỏng không tự ghi đè workbook mẫu. Các tệp trong `public/` được phát hành cùng website và có thể truy cập bằng URL.
+
+## Cài đặt và chạy cục bộ
+
+Yêu cầu **Node.js 20 trở lên**, npm và trình duyệt hiện hành. Chrome/Edge hỗ trợ chọn tệp và ghi trực tiếp khi người dùng cấp quyền.
 
 ```bash
-npm install
+git clone https://github.com/MatthewLK13/Flight-Management.git
+cd Flight-Management
+npm ci
 npm run dev
 ```
 
-Mở địa chỉ localhost do Vite in ra. Trên giao diện:
+Mở địa chỉ localhost do Vite hiển thị. Nếu cần chọn cổng:
 
-1. Chọn bộ dữ liệu mẫu hoặc **Tải tệp mới**.
-2. Chọn ngày mô phỏng và nhấn **Chạy mô phỏng**.
-3. Dùng thanh thời gian, nút phát/tạm dừng và tốc độ để xem lại cả ngày.
-4. Chọn một chuyến trong hàng chờ để xem vị trí và điện văn liên quan.
-5. Nếu đã mở tệp mới bằng quyền ghi, dùng **Ghi vào workbook** khi cần lưu các cột mô phỏng.
+```bash
+npm run dev -- --port 4175
+```
 
-Để tạo bản phát hành tĩnh:
+### Hướng dẫn sử dụng
+
+1. Chọn bộ dữ liệu tích hợp hoặc **Tải tệp mới**.
+2. Chọn **Ngày khai thác**, giữ cấu hình **25L / 25R**, nhấn **Chạy mô phỏng**.
+3. Dùng **Phát/Tạm dừng**, thanh thời gian và tốc độ để quan sát các lượt đi/đến.
+4. Chọn tàu trên bản đồ hoặc trong hàng chờ để theo dõi; dùng tìm kiếm và bộ lọc khi cần.
+5. Bật/tắt **Thời tiết xấu** để xem xử lý hết hạn và khôi phục lịch.
+6. Với tệp được mở bằng quyền ghi trực tiếp, dùng **Ghi vào workbook** để lưu kết quả.
+
+### Ghi kết quả về tệp nguồn
+
+Tính năng ghi cần file handle do trình duyệt cấp và môi trường an toàn như HTTPS hoặc localhost. Nếu chưa có quyền ghi, nút lưu không khả dụng; đọc tệp và chạy mô phỏng vẫn thực hiện được.
+
+Các trường kết quả gồm `TSAT`, `ActualTakeoff`, `RunwayEntry`, `TakeoffRollStart`, `ReissuedCTOT`, `ReissuedTSAT`, `ReturnStand`, `QueueOrder` và `SimulationStatus`, cùng các trường chuẩn hóa phục vụ mô phỏng. Việc ghi dùng SheetJS; không bảo đảm giữ nguyên toàn bộ định dạng trình bày đặc thù của workbook gốc.
+
+## Kiến trúc và phương pháp xếp lịch
+
+```mermaid
+flowchart TD
+    A[Workbook tích hợp hoặc Excel/CSV mới] --> B[Đọc và chuẩn hóa dữ liệu]
+    B --> C[Phân loại DEP/ARR, H/M và phân bổ stand]
+    C --> D[Xếp lịch khởi hành và xử lý TSAT/CTOT]
+    D --> E[Đặt chỗ theo vị trí và thời gian trên mạng đường lăn]
+    C --> E
+    E --> F[Phối hợp 25L/25R và tạo hành trình]
+    F --> G[Áp dụng các mốc thời tiết]
+    G --> H[Dòng thời gian phát lại]
+    H --> I[Parking chart]
+    H --> J[Bản tin DCL]
+    H --> K[Hàng chờ và chỉ số]
+```
+
+Bộ điều phối sử dụng **heuristic chọn chuyến khả dụng**, xét cửa sổ CTOT và ràng buộc H/M, kết hợp mạng đường lăn và đặt chỗ **theo không gian–thời gian**. Tuyến di chuyển được nội suy trên hình học chart; điểm giao và khoảng chiếm dụng được xét khi dựng lịch vật lý.
+
+Phương pháp ưu tiên tốc độ xử lý và khả năng phát lại nhiều chuyến. **Phiên bản hiện tại chưa tích hợp bộ giải MILP và không cung cấp chứng nhận tối ưu toàn cục.** Kết quả phụ thuộc dữ liệu, số stand, tuyến được mô hình hóa và ràng buộc đang áp dụng.
+
+### Công nghệ
+
+| Thành phần | Công nghệ |
+| --- | --- |
+| Giao diện | React 18, TypeScript, CSS đáp ứng, Lucide React |
+| Phát triển và build | Vite 6 |
+| Excel/CSV | SheetJS |
+| Bản đồ và tàu bay | Ảnh parking chart, SVG overlay, nội suy đường đi |
+| Kiểm thử | Vitest, Testing Library, jsdom |
+| Triển khai | Website tĩnh trên Vercel |
+
+### Cấu trúc mã nguồn
+
+```text
+Flight-Management/
+├── public/
+│   ├── assets/                  # Parking chart và tài nguyên hình ảnh
+│   └── samples/                 # Bốn workbook tích hợp
+├── src/
+│   ├── App.tsx                  # Giao diện, phát lại và liên kết các phân hệ
+│   ├── data/                    # Đọc/ghi tệp, chuẩn hóa và phân bổ stand
+│   ├── dcl/                     # Kịch bản và định dạng điện văn
+│   ├── map/                     # Hình học chart, mạng đường lăn và vị trí tàu
+│   ├── simulation/              # Lịch, CTOT, thời tiết và phân cách chuyển động
+│   ├── styles/                  # Giao diện và bố cục đáp ứng
+│   └── main.tsx                 # Điểm khởi chạy React
+├── index.html
+├── package.json
+├── package-lock.json
+├── vercel.json
+└── README.md
+```
+
+| Mô-đun chính | Trách nhiệm |
+| --- | --- |
+| [`src/data/workbook.ts`](src/data/workbook.ts) | Đọc nguồn dữ liệu và ghi workbook |
+| [`src/data/enrichFlights.ts`](src/data/enrichFlights.ts) | Chuẩn hóa trường, phân loại và bổ sung dữ liệu |
+| [`src/simulation/runSimulation.ts`](src/simulation/runSimulation.ts) | Xếp thứ tự khởi hành và xử lý TSAT/CTOT |
+| [`src/simulation/surfaceTraffic.ts`](src/simulation/surfaceTraffic.ts) | Dựng hành trình, kiểm tra chiếm dụng không gian–thời gian |
+| [`src/simulation/runwayCoordination.ts`](src/simulation/runwayCoordination.ts) | Phối hợp chạy đà với tàu đến vượt mốc 25R |
+| [`src/simulation/weather.ts`](src/simulation/weather.ts) | Thời tiết, khôi phục lịch và điện văn điều chỉnh |
+| [`src/map/surfaceGraph.ts`](src/map/surfaceGraph.ts) | Tọa độ stand, đường lăn và nhánh thoát P4/P5 |
+| [`src/map/playback.ts`](src/map/playback.ts) | Vị trí và trạng thái tàu tại thời điểm phát lại |
+| [`src/dcl/dclScenario.ts`](src/dcl/dclScenario.ts) | Sinh và trình bày chuỗi điện văn DCL |
+
+## Kiểm thử
+
+```bash
+# Chạy toàn bộ kiểm thử một lần
+npm test -- --run
+
+# Chạy kiểm thử tương tác khi phát triển
+npm test
+
+# Kiểm tra TypeScript và dựng bản production
+npm run build
+```
+
+Các nhóm kiểm thử bao phủ:
+
+- Đọc workbook, phân loại DEP/ARR, H/M và bảo toàn CTOT nguồn.
+- CTOT tự sinh phù hợp với thời điểm stand khả dụng.
+- Kịch bản bắt buộc không tuân thủ CTOT và cấp lại mốc theo vị trí.
+- Tàu đi chờ trên 25L đến khi tàu đến vượt mốc 25R.
+- Tọa độ P4/P5, điểm chờ, trục cắt 25L và đường cong S8 → V so với ảnh gốc.
+- Chuyển động tăng tốc, tính liên tục khi cất cánh và quay về stand.
+- Phân cách chuyển động và ngày mật độ cao **329 lượt đi + 321 lượt đến**.
+- Khôi phục sau mưa với các workbook tích hợp; giao diện, phát lại và điện văn.
+
+Kiểm tra riêng độ khớp chart:
+
+```bash
+npm test -- --run src/map/arrivalChartAlignment.test.ts
+```
+
+Các kiểm tra xác nhận hành vi trong phạm vi mô hình, không thay thế thẩm định nghiệp vụ khai thác hàng không.
+
+## Build và triển khai Vercel
+
+**Production:** [tsn-flight-management.vercel.app](https://tsn-flight-management.vercel.app/)
+
+Website production mở công khai; người xem không cần tài khoản Vercel.
 
 ```bash
 npm run build
 ```
 
-Thư mục đầu ra là `dist/`.
+Bản build xuất vào **`dist/`**. [`vercel.json`](vercel.json) khai báo cấu hình triển khai từ mã nguồn:
 
-## Dữ liệu và quy tắc xử lý
-
-Bốn workbook trong `public/samples/` được phục vụ cùng ứng dụng. Bộ `21102026.xlsx` được chọn mặc định; các bộ cũ vẫn có thể chọn trong danh sách nguồn dữ liệu:
-
-| Bộ dữ liệu | Đường dẫn công khai | Số dòng nguồn |
-| --- | --- | ---: |
-| Cập nhật 21.10.2026, khai thác 01.10.2026 | `/samples/21102026.xlsx` | 100: 70 DEP, 30 ARR |
-| Chuyên đề, khai thác 01.10.2026 | `/samples/chuyen-de.xlsx` | 100: 70 DEP, 30 ARR |
-| 7 ngày | `/samples/7-days.xls` | 14.150 |
-| 3 ngày | `/samples/3-days.xls` | 6.016 |
-
-Trong bộ cập nhật, cả 70 CTOT đã có trong nguồn và cách STD 15 phút. Bộ đọc ghép giờ CTOT dạng `01:20 PM` với `FlyDate`, đồng thời giữ đúng timestamp ISO nếu có. Cột `Compliance = Không tuân thủ` là kịch bản bắt buộc: 25 chuyến được đánh dấu sẽ chờ quá CTOT + 10 phút, quay về vị trí đỗ trống gần nhất, rồi nhận TSAT/CTOT mới. Các trường nguồn được giữ nguyên. Bộ này có 50 chuyến đi nội địa, 20 chuyến đi quốc tế, 22 chuyến đến nội địa và 8 chuyến đến quốc tế; thời gian hạ cánh dùng ATA có sẵn. Có 5 dòng STA sớm hơn ATD được giữ nguyên để đối chiếu với nguồn.
-
-Các workbook mẫu được ứng dụng đọc mà không ghi đè. Khi dùng dữ liệu tải lên, phần mềm giữ các cột nguồn và bổ sung trường mô phỏng khi thiếu, trong đó có `ScheduledDeparture`, `CTOT`, `Stand`, `StandReadyAt`, `TaxiMinutes`, `TaxiRoute`, `RunwayConfig`, `RunwayEntry`, `TakeoffRollStart`, `ActualTakeoff`, `ReissuedCTOT`, `QueueOrder` và `SimulationStatus`. Giá trị được tạo cho demo ổn định theo dữ liệu nguồn; trường có sẵn được ưu tiên giữ lại.
-
-Chỉ các dòng có `AirportDeliveryCode = VVTS` mới được đưa vào mô phỏng khởi hành. Thời gian chờ được tính riêng với thời gian tàu bay đang lăn. Nếu bỏ lỡ cửa sổ CTOT, chuyến bay vẫn tiếp tục được xếp lịch bằng CTOT cấp lại, không đứng chờ vô thời hạn.
-
-Để quan sát xử lý thời tiết, chạy lịch rồi bật **Thời tiết xấu** khi một tàu đang lăn. Tiếp tục phát lại hoặc tua qua CTOT + 10 phút để xem tàu về vị trí đỗ và chuyển trạng thái đỏ. Tắt nút mưa để nhận TSAT/CTOT mới tự động; hàng chờ, bản đồ và bản tin DCL cập nhật đồng bộ. Tàu chưa rời stand tiếp tục chờ tại stand đó. Nếu tua về quá khứ và thay đổi nút thời tiết, các thay đổi thời tiết sau thời điểm vừa chọn được thay bằng kịch bản mới.
-
-**Lưu ý về dữ liệu công khai:** khi triển khai website, hai workbook trong `public/samples/` có thể được truy cập trực tiếp bằng URL ở bảng trên. Không đặt dữ liệu nhạy cảm vào thư mục này.
-
-## Cấu trúc dự án
-
-| Thư mục / tệp | Vai trò |
+| Thiết lập | Giá trị |
 | --- | --- |
-| `src/App.tsx` | Giao diện, điều khiển phát lại và liên kết các phân hệ |
-| `src/data/` | Đọc/ghi workbook, chuẩn hóa và bổ sung dữ liệu chuyến bay |
-| `src/simulation/` | Lịch khởi hành, hàng chờ, CTOT và thứ tự chuyến |
-| `src/map/` | Tọa độ stand, điểm chờ và đường di chuyển trên parking chart |
-| `src/dcl/` | Kịch bản và định dạng điện văn DCL |
-| `src/styles/` | Giao diện và thiết kế đáp ứng |
-| `public/assets/` | Ảnh parking chart |
-| `public/samples/` | Hai workbook demo tích hợp |
-| `vercel.json` | Cấu hình xuất bản trên Vercel |
+| Framework | `vite` |
+| Build command | `npm run build` |
+| Output directory | `dist` |
 
-Nền tảng sử dụng **React, TypeScript, Vite và SheetJS**. Việc đọc tệp và mô phỏng diễn ra ở phía trình duyệt; dự án không cần máy chủ ứng dụng riêng.
-
-## Triển khai trên Vercel
-
-Địa chỉ production công khai: **https://tsn-flight-management.vercel.app**. Người xem không cần đăng nhập Vercel.
-
-`vercel.json` đã khai báo framework Vite, lệnh dựng `npm run build` và thư mục đầu ra `dist`. Có thể kết nối repository với Vercel hoặc triển khai bằng CLI từ thư mục dự án:
+Có thể triển khai từ thư mục dự án bằng Vercel CLI:
 
 ```bash
+# Tạo bản xem trước và liên kết project khi cần
 npx vercel@latest
+
+# Xuất bản production
 npx vercel@latest --prod
 ```
 
-Lệnh đầu tạo bản xem trước; lệnh thứ hai xuất bản bản production. Hai workbook mẫu đi cùng bản dựng. Tính năng ghi trực tiếp vào workbook phụ thuộc quyền truy cập tệp của trình duyệt; thao tác tải lên và mô phỏng vẫn chạy trên website.
+Một lựa chọn khác là kết nối repository GitHub trong project Vercel và cấu hình nhánh production để tự triển khai khi push. Push lên GitHub chỉ kích hoạt triển khai tự động khi kết nối Git này đã được thiết lập.
 
-## Giới hạn của bản demo
+Bốn workbook trong `public/samples/` phải được phát hành cùng ứng dụng. Các PDF tham khảo và tệp cục bộ không cần cho website được loại khỏi luồng tải nguồn bằng [`.vercelignore`](.vercelignore).
 
-- DCL là điện văn dựng theo kịch bản, không phải trao đổi CPDLC/DCL với ATC.
-- Hình học đường lăn là mô phỏng trực quan trên parking chart, không thay thế dữ liệu đường lăn và quy trình điều hành được phê chuẩn.
-- Kết quả sắp xếp phục vụ minh họa, không dùng để đưa ra quyết định khai thác thực tế.
+## Phạm vi và giới hạn
 
-## Giấy phép và nguồn dữ liệu
+Ứng dụng phục vụ nghiên cứu, học tập và trình diễn quy trình phối hợp CPDLC–DCL. Bản tin được sinh theo kịch bản; hệ thống không kết nối với ATC, CPDLC/DCL hay dữ liệu bay thời gian thực.
 
-Repository hiện chưa khai báo giấy phép phần mềm. Ảnh parking chart và workbook mẫu được giữ trong dự án để phục vụ phần trình diễn; trước khi tái sử dụng hoặc phát hành dữ liệu ở phạm vi khác, cần kiểm tra quyền sử dụng của từng nguồn.
+Hình học được căn thủ công theo parking chart. Phân cách, tốc độ, điều kiện điểm X, quy tắc 25R/25L và cách cấp lại mốc là các giả định được cài đặt cho đề tài. Phần mềm không dùng để cấp huấn lệnh hoặc đưa ra quyết định khai thác thực tế.
+
+## Giấy phép và tài liệu tham chiếu
+
+Repository hiện chưa có tệp `LICENSE`. Parking chart, workbook và tài liệu tham khảo đi kèm có nguồn quyền sử dụng riêng; công bố mã nguồn không mặc nhiên cấp quyền tái sử dụng mọi tài nguyên trong dự án.
+
+- **Mã nguồn:** [MatthewLK13/Flight-Management](https://github.com/MatthewLK13/Flight-Management)
+- **Parking chart:** [`public/assets/PARKING_CHART_clean.png`](public/assets/PARKING_CHART_clean.png)
+- **Workbook tích hợp:** [`public/samples/`](public/samples/)
