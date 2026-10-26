@@ -4,8 +4,8 @@ import type { ArrivalTimelineItem } from './arrivals';
 import { departurePosition } from '../map/playback';
 import { getNearestReturnStand, getTaxiRoutePoints, type MapPoint } from '../map/airfieldGeometry';
 import type { DclEvent } from '../dcl/dclScenario';
-import { ctotDelayMinutes } from './ctot';
-import { releaseTakeoffRoll, arrivalDelayForBookedRolls } from './runwayCoordination';
+import { departureTsatAt, tsatWaitMinutes } from './departureTiming';
+import { releaseTakeoffRoll, arrivalDelayForBookedRolls, reserveCrossingsBeforeDeparture } from './runwayCoordination';
 import { distanceAlongPathToPoint } from '../map/surfaceGraph';
 
 const MINUTE = 60_000;
@@ -127,7 +127,7 @@ function applyPeriod(departures: TimelineItem[], inbound: ArrivalTimelineItem[],
       secondTaxiStart: state.resumedTaxiStart,
       reissuedCtot: issued && !revisedAtStand ? wheelsOff : null,
       reissuedTsat: issued && revisedAtStand ? state.resumedTaxiStart : null,
-      waitMinutes: Number.isFinite(wheelsOff) ? ctotDelayMinutes(wheelsOff, previous.ctot) : previous.waitMinutes,
+      waitMinutes: tsatWaitMinutes(wheelsOff, issued && revisedAtStand ? state.resumedTaxiStart : departureTsatAt(previous, Infinity)),
       status: issued ? 'Đã cấp TSAT/CTOT mới' : 'Chờ thời tiết tốt' };
   }
   const committed = departures.filter((flight) => flight.runwayEntryStart < period.start);
@@ -165,6 +165,21 @@ function applyPeriod(departures: TimelineItem[], inbound: ArrivalTimelineItem[],
       Object.assign(flight, withState(next, Math.max(next.previous.wheelsOff, next.groundReadyAt + MOVEMENT)));
     }
     const completed = [...committed].sort((a, b) => a.wheelsOff - b.wheelsOff);
+    let forecastLandingAvailable = -Infinity;
+    const arrivalForecast = [...inbound].sort((a, b) => a.touchdown - b.touchdown || a.id.localeCompare(b.id)).map(arrival => {
+      if (arrival.approachStart < period.start) {
+        forecastLandingAvailable = arrival.touchdown + MOVEMENT;
+        return arrival;
+      }
+      let approachStart = Math.max(arrival.approachStart, release, forecastLandingAvailable);
+      const provisional = { ...arrival, approachStart, touchdown: arrival.touchdown + approachStart - arrival.approachStart };
+      approachStart += arrivalDelayForBookedRolls(provisional, 0, committed.map(flight => flight.takeoffRollStart));
+      const delay = approachStart - arrival.approachStart;
+      const forecast = { ...arrival, approachStart, touchdown: arrival.touchdown + delay, p5HoldAt: arrival.p5HoldAt + delay };
+      forecastLandingAvailable = forecast.touchdown + MOVEMENT;
+      return forecast;
+    });
+    const servedCrossings = new Set(inbound.filter(arrival => arrival.crossingStart < period.start).map(arrival => arrival.id));
     let available = completed.at(-1)?.wheelsOff ?? -Infinity;
     if (Number.isFinite(available)) available += MOVEMENT;
     const earliest = (flight: TimelineItem) => currentState(flight)
@@ -187,9 +202,15 @@ function applyPeriod(departures: TimelineItem[], inbound: ArrivalTimelineItem[],
       let [flight] = pending.splice(index, 1);
       let wheelsOff = Math.max(earliest(flight), available);
       let previousTakeoff: number;
+      let crossingPriority: { entry: number; served: string[] };
       do {
         previousTakeoff = wheelsOff;
-        wheelsOff = releaseTakeoffRoll(wheelsOff - TAKEOFF_ROLL_MS, inbound) + TAKEOFF_ROLL_MS;
+        crossingPriority = reserveCrossingsBeforeDeparture(wheelsOff - MOVEMENT,
+          completed.length ? completed.at(-1)!.wheelsOff + 10_000 : -Infinity,
+          arrivalForecast.filter(arrival => !servedCrossings.has(arrival.id))
+            .map(arrival => ({ id: arrival.id, p5HoldAt: Math.max(arrival.p5HoldAt, period.start) })));
+        wheelsOff = crossingPriority.entry + MOVEMENT;
+        wheelsOff = releaseTakeoffRoll(wheelsOff - TAKEOFF_ROLL_MS, arrivalForecast) + TAKEOFF_ROLL_MS;
         for (const crossing of inbound.filter((arrival) => arrival.crossingStart < period.start).sort((a, b) => a.crossingStart - b.crossingStart)) {
           if (wheelsOff - MOVEMENT < crossing.crossingEnd + 10_000 && wheelsOff > crossing.crossingStart) {
             wheelsOff = crossing.crossingEnd + 10_000 + MOVEMENT;
@@ -206,6 +227,7 @@ function applyPeriod(departures: TimelineItem[], inbound: ArrivalTimelineItem[],
         continue;
       }
       if (state || wheelsOff > flight.wheelsOff) flight = withState(state ?? stateFor(previous), wheelsOff);
+      for (const id of crossingPriority.served) servedCrossings.add(id);
       completed.push(flight);
       available = wheelsOff + MOVEMENT;
     }
@@ -235,14 +257,18 @@ function applyPeriod(departures: TimelineItem[], inbound: ArrivalTimelineItem[],
       crossingAvailable = Math.max(crossingAvailable, previous.crossingEnd + 15_000);
       return arrival;
     }
-    let crossingStart = Math.max(arrival.p5HoldAt, crossingAvailable);
+    // A revised clearance cannot move an aircraft retroactively before this weather event.
+    let crossingStart = Math.max(arrival.p5HoldAt, crossingAvailable, period.start);
     for (const departure of flights) {
       if (Number.isFinite(departure.wheelsOff) && crossingStart < departure.wheelsOff + 10_000
         && crossingStart + 45_000 > departure.runwayEntryStart) crossingStart = departure.wheelsOff + 10_000;
     }
     crossingAvailable = crossingStart + MINUTE;
-    return { ...arrival, crossingStart, crossingEnd: crossingStart + 45_000,
-      standArrival: crossingStart + 45_000 + (arrival.standArrival - arrival.crossingEnd) };
+    const standArrival = crossingStart + 45_000 + (arrival.standArrival - arrival.crossingEnd);
+    const changed = crossingStart !== previous.crossingStart || standArrival !== previous.standArrival;
+    return { ...arrival, crossingStart, crossingEnd: crossingStart + 45_000, standArrival,
+      // Preserve pre-weather playback, then animate the revised crossing times.
+      ...(changed ? { weather: { ...period, previous }, surfacePlan: undefined } : {}) };
   });
   return { flights, arrivals };
 }

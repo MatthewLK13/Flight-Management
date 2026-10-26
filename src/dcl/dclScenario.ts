@@ -1,4 +1,4 @@
-export type DclEvent = { id: string; time: number; callsign: string; direction: string; message: string; status: 'OK' | 'TỪ CHỐI' | 'TIMEOUT' };
+export type DclEvent = { id: string; flightId?: string; time: number; callsign: string; direction: string; message: string; status: 'OK' | 'TỪ CHỐI' | 'TIMEOUT' };
 export type DclContext = { origin?: string; destination?: string; stand?: string; aircraftType?: string; runway?: string; tsat?: number };
 
 /** Lay out each simulated telegram in the same field groups as the DCL examples. */

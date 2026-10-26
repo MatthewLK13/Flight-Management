@@ -1,4 +1,5 @@
-import { ctotDelayMinutes, isWithinCtotWindow } from './ctot';
+import { isWithinCtotWindow } from './ctot';
+import { tsatWaitMinutes } from './departureTiming';
 import { optimizeFlights } from './optimizer';
 import { wakeCategory, type WakeCategory } from '../data/aircraft';
 import { getNearestReturnStand } from '../map/airfieldGeometry';
@@ -134,7 +135,7 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
     const wheelsOff = earliestTakeoff;
     const reissuedCtot = item.hadMissed && !item.returnStand ? wheelsOff : null;
     const flight = item.flight;
-    const waitMinutes = ctotDelayMinutes(wheelsOff, flight.ctot);
+    const waitMinutes = tsatWaitMinutes(wheelsOff, item.returnStand ? item.secondTaxiStart ?? item.taxiStart : item.taxiStart);
     runwayAvailable = wheelsOff + RUNWAY_MOVEMENT_MS;
     clock = runwayAvailable;
     result.push({
@@ -144,7 +145,7 @@ function runOrderedSimulation(ordered: ScheduledFlight[]): SimulationResult {
       tsat: item.taxiStart, reissuedTsat: item.returnStand ? item.secondTaxiStart ?? null : null,
       returnStart: item.returnStart ?? null, returnEnd: item.returnEnd ?? null,
       returnStand: item.returnStand ?? null, secondTaxiStart: item.secondTaxiStart ?? null,
-      status: item.hadMissed ? 'Không tuân thủ CTOT' : waitMinutes > 0.1 ? 'Đang chờ' : 'Đúng CTOT',
+      status: item.hadMissed ? 'Không tuân thủ CTOT' : 'Đúng CTOT',
     });
   }
   result.sort((a, b) => a.wheelsOff - b.wheelsOff || a.id.localeCompare(b.id));
