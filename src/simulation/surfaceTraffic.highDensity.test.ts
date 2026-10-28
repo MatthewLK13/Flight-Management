@@ -25,7 +25,10 @@ it('plans a 650-movement day without collisions, repeated P5 waits, or overlappi
     expect(plan.arrivals[index].touchdown).toBeGreaterThanOrEqual(plan.arrivals[index - 1].landingEnd + 60_000);
   }
   for (const arrival of plan.arrivals) for (const departure of plan.flights) {
-    expect(arrival.crossingEnd <= departure.runwayEntryStart || arrival.crossingStart >= departure.wheelsOff + RUNWAY_CLEARANCE_MS).toBe(true);
+    expect(arrival.crossingEnd <= departure.runwayEntryStart || arrival.crossingStart >= departure.wheelsOff + RUNWAY_CLEARANCE_MS,
+      JSON.stringify({ arrival: arrival.id, crossing: [arrival.crossingStart, arrival.crossingEnd], departure: departure.id,
+        occupied: [departure.runwayEntryStart, departure.wheelsOff + RUNWAY_CLEARANCE_MS] })).toBe(true);
+    expect(departure.runwayEntryStart < arrival.p5HoldAt || departure.runwayEntryStart >= arrival.crossingEnd).toBe(true);
     expect(departure.takeoffRollStart < arrival.approachStart || departure.takeoffRollStart >= arrivalThresholdClearAt(arrival)).toBe(true);
   }
   const all = [...plan.flights, ...plan.arrivals].sort((a, b) => a.surfacePlan!.visibleFrom - b.surfacePlan!.visibleFrom);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runSimulation, type ScheduledFlight } from './runSimulation';
-import { departurePosition } from '../map/playback';
+import { arrivalPosition, departurePosition } from '../map/playback';
+import { getArrivalRoutePoints } from '../map/airfieldGeometry';
 import { applyWeatherPeriods, weatherStatus, weatherDclEvents } from './weather';
 import { formatDclMessage } from '../dcl/dclScenario';
 import { scheduleArrivals } from './arrivals';
@@ -16,6 +17,24 @@ const flight = (id: string, ready: number, ctot: number): ScheduledFlight => ({
 });
 
 describe('manual adverse weather', () => {
+  it('releases the rendered arrival when its crossing is rescheduled instead of replaying the old hold', () => {
+    const arrival = scheduleArrivals([{ CallSign: 'ARR', PlaneTypeCode: 'A321', Stand: '75',
+      ScheduledArrival: new Date(10 * minute).toISOString() }], [])[0];
+    const route = getArrivalRoutePoints(arrival.stand, arrival.exitBranch);
+    const crossingStart = arrival.p5HoldAt + 30 * minute;
+    const previous = { ...arrival, crossingStart, crossingEnd: crossingStart + 45_000,
+      standArrival: crossingStart + 5 * minute,
+      surfacePlan: { visibleFrom: arrival.approachStart, visibleUntil: crossingStart + 50 * minute, route: 'P4',
+        legs: [{ start: arrival.p5HoldAt, end: crossingStart, points: [route.toHold.at(-1)!], phase: 'dừng trước 25L tại P5' }] } };
+    for (const start of [arrival.touchdown + 1000, arrival.p5HoldAt + 5 * minute]) {
+      const next = applyWeatherPeriods([], [previous], [{ start, end: start + minute }], '25L-25R').arrivals[0];
+      expect(next.crossingStart).toBe(Math.max(arrival.p5HoldAt, start));
+      expect(arrivalPosition(next, next.crossingStart + 1000).phase).toBe('cắt qua 25L');
+      expect(arrivalPosition(next, start - 1)).toEqual(arrivalPosition(previous, start - 1));
+      if (start > arrival.p5HoldAt) expect(arrivalPosition(next, start).point).toEqual(arrivalPosition(previous, start - 1).point);
+    }
+  });
+
   it('blocks new departures indefinitely while the clock can pass CTOT', () => {
     const base = runSimulation([flight('ONE', 10, 20)]).flights;
     const result = applyWeatherPeriods(base, [], [{ start: 11 * minute, end: null }], '25L-25R');
@@ -150,6 +169,8 @@ describe('weather recovery with bundled workbooks', () => {
       expect(Number.isFinite(arrival.standArrival)).toBe(true);
       for (const departure of plan.flights) {
         expect(arrival.crossingEnd <= departure.runwayEntryStart || arrival.crossingStart >= departure.wheelsOff + 10_000).toBe(true);
+        if (arrival.crossingStart >= start) expect(departure.runwayEntryStart < Math.max(arrival.p5HoldAt, start)
+          || departure.runwayEntryStart >= arrival.crossingEnd, `${arrival.callsign}/${departure.callsign}`).toBe(true);
       }
     }
   });

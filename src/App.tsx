@@ -13,6 +13,7 @@ import { getHoldingPoint, getRunwaySegment, getTaxiRouteDescription, MAP_VIEWBOX
 import { arrivalPosition, departurePosition, TAKEOFF_VISIBLE_AFTER_MS } from './map/playback';
 import { planSurfaceTraffic } from './simulation/surfaceTraffic';
 import { scheduleArrivals, type ArrivalTimelineItem } from './simulation/arrivals';
+import { clearanceRequestTime, departureTsatAt, departureWaitMinutesAt } from './simulation/departureTiming';
 import { applyWeatherPeriods, weatherDclEvents, weatherStatus, departureAtTime, hasMissedCtotAt, hasReissuedSlotAt, type WeatherPeriod } from './simulation/weather';
 
 type FilePickerWindow = Window & { showOpenFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle[]> };
@@ -226,19 +227,19 @@ function App() {
           } : row;
         });
         setImported({ ...imported, enrichedRows: updatedRows });
-        const firstDepartureMovement = Math.min(...improved.flights.map((flight) => flight.surfacePlan?.visibleFrom ?? flight.readyAt - 45 * 60_000), Infinity);
+        const firstDepartureMovement = Math.min(...improved.flights.map((flight) => clearanceRequestTime(flight.tsat, dayStart)), Infinity);
         const firstArrivalMovement = Math.min(...inbound.map((flight) => flight.approachStart), Infinity);
         const firstMovement = Math.min(firstDepartureMovement, firstArrivalMovement);
         const playbackStart = Number.isFinite(firstMovement) ? Math.max(0, Math.floor((firstMovement - dayStart) / 60_000)) : 0;
         setWeatherPeriods(badWeather ? [{ start: dayStart + playbackStart * 60_000, end: null }] : []);
         setMinute(playbackStart); setPlaying(true);
         const allEvents = improved.flights.flatMap((flight, index) => {
-          const clearanceTime = Math.max(dayStart, flight.tsat - 10 * 60_000);
+          const clearanceTime = clearanceRequestTime(flight.tsat, dayStart);
           const clearanceEvents = createDclEvents(flight.callsign, clearanceTime, seeded(flight.id) + index, {
             origin: String(flight.row.AirportDeliveryCode || 'VVTS'),
             destination: String(flight.row.AirportReceiptCode || 'VVDN'),
             stand: flight.stand, aircraftType: flight.aircraftType, runway, tsat: flight.tsat,
-          }).map((event) => ({ ...event, id: `${flight.id}-${event.id}` }));
+          }).map((event) => ({ ...event, flightId: flight.id, id: `${flight.id}-${event.id}` }));
           if (flight.reissuedTsat === null || flight.returnEnd === null) return clearanceEvents;
           const updateTime = flight.returnEnd;
           const revisedTsat = new Date(flight.reissuedTsat);
@@ -274,7 +275,7 @@ function App() {
       const iso = (value: number | null) => value !== null && Number.isFinite(value) ? new Date(value).toISOString() : '';
       const next = { ...imported, enrichedRows: imported.enrichedRows.map((row) => {
         const flight = departures.get(rowKey(row));
-        if (flight) return { ...row, TSAT: iso(flight.reissuedTsat ?? flight.tsat),
+        if (flight) return { ...row, TSAT: iso(departureTsatAt(flight, Infinity)),
           ReissuedTSAT: iso(flight.reissuedTsat), ReissuedCTOT: iso(flight.reissuedCtot),
           ActualTakeoff: iso(flight.wheelsOff), RunwayEntry: iso(flight.runwayEntryStart),
           TakeoffRollStart: iso(flight.takeoffRollStart), ReturnStand: flight.returnStand ?? '',
@@ -309,14 +310,20 @@ function App() {
       while (first.previous.weather) first = first.previous.weather;
       return { prefix: `${flight.id}-`, time: first.start };
     });
-    return [...events.filter((event) => !cutoffs.some((cutoff) => event.id.startsWith(cutoff.prefix) && event.time >= cutoff.time)),
+    return [...events.filter((event) => event.message.startsWith('RCD ') || !cutoffs.some((cutoff) => event.id.startsWith(cutoff.prefix) && event.time >= cutoff.time)),
       ...weatherDclEvents(flights, weatherPeriods)].sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
   }, [events, flights, weatherPeriods]);
   const activeEvents = displayEvents.filter((event) => event.time <= timeCursor).slice(-8).reverse();
   const currentMissed = flights.filter((flight) => hasMissedCtotAt(flight, timeCursor)).length;
   const currentReissued = flights.filter((flight) => hasReissuedSlotAt(flight, timeCursor)).length;
-  // Sum per-flight CTOT violations; playback start is not a delay reference.
-  const currentWait = flights.reduce((total, flight) => total + (flight.wheelsOff <= timeCursor ? flight.waitMinutes : 0), 0);
+  const departureRcdTimes = useMemo(() => {
+    const times = new Map<string, number>();
+    for (const event of displayEvents) if (event.flightId && event.message.startsWith('RCD ') && !times.has(event.flightId)) {
+      times.set(event.flightId, event.time);
+    }
+    return times;
+  }, [displayEvents]);
+  const currentWait = flights.reduce((total, flight) => total + departureWaitMinutesAt(flight, timeCursor), 0);
 
   return (
     <main className="app-shell">
@@ -390,7 +397,7 @@ function App() {
                 </g>
                 <g className="runway-end"><circle cx={runwaySegment.threshold.x} cy={runwaySegment.threshold.y} r="6" />
                   <text x={runwaySegment.threshold.x - 95} y={runwaySegment.threshold.y + 25}>CẤT CÁNH · 25L</text></g>
-                {flights.filter((flight) => timeCursor >= (flight.surfacePlan?.visibleFrom ?? flight.readyAt - 45 * 60_000) && timeCursor < flight.wheelsOff + TAKEOFF_VISIBLE_AFTER_MS).slice(0, 180).map((flight) => {
+                {flights.filter((flight) => timeCursor >= (departureRcdTimes.get(flight.id) ?? Infinity) && timeCursor < flight.wheelsOff + TAKEOFF_VISIBLE_AFTER_MS).map((flight) => {
                   const queueIndex = holdingQueue.findIndex((queued) => queued.id === flight.id);
                   const position = departurePosition(flight, timeCursor, queueIndex, runway);
                   const chosen = selectedFlight === flight.callsign;
@@ -470,7 +477,7 @@ function App() {
               const weather = weatherStatus(flight, timeCursor);
               const missed = hasMissedCtotAt(flight, timeCursor);
               const revisedSlot = flight.reissuedTsat ?? flight.reissuedCtot;
-              const tsat = weather?.pending ? null : weather?.tsat ?? revisedSlot ?? flight.tsat;
+              const tsat = weather?.pending ? null : departureTsatAt(flight, timeCursor);
               const phase = departurePosition(flight, timeCursor, 0, runway).phase;
               const status = weather?.label ?? (missed ? 'Không tuân thủ CTOT'
                 : phase.startsWith('đã cất cánh') ? 'Đã cất cánh'

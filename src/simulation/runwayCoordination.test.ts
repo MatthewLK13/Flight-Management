@@ -20,9 +20,9 @@ describe('25R arrival priority', () => {
     expect(clear).toBeLessThan(arrival.touchdown);
     expect(releaseTakeoffRoll(clear - 1, [arrival])).toBe(clear);
     expect(releaseTakeoffRoll(clear, [arrival])).toBe(clear);
-    expect(releaseTakeoffRoll(arrival.approachStart - 1, [arrival])).toBe(arrival.approachStart - 1);
+    expect(releaseTakeoffRoll(arrival.approachStart - 1, [arrival])).toBe(Math.ceil(arrival.approachStart - 1));
     // A future approach must not block the whole takeoff roll in advance.
-    expect(releaseTakeoffRoll(arrival.approachStart - 30_000, [arrival])).toBe(arrival.approachStart - 30_000);
+    expect(releaseTakeoffRoll(arrival.approachStart - 30_000, [arrival])).toBe(Math.ceil(arrival.approachStart - 30_000));
   });
 
   it('shows a stationary wait on 25L and protects the final retimed arrival schedule', () => {

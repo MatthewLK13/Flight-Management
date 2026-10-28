@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import * as dclScenario from './dcl/dclScenario';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -23,6 +24,7 @@ describe('Flight operations dashboard', () => {
     const handle = { getFile: vi.fn().mockResolvedValue(file) };
     vi.stubGlobal('showOpenFilePicker', vi.fn().mockResolvedValue([handle]));
     Object.defineProperty(window, 'showOpenFilePicker', { configurable: true, value: vi.fn().mockResolvedValue([handle]) });
+    const clearanceSpy = vi.spyOn(dclScenario, 'createDclEvents');
     const user = userEvent.setup();
     render(<App />);
 
@@ -41,6 +43,19 @@ describe('Flight operations dashboard', () => {
     const pause = screen.queryByRole('button', { name: /tạm dừng mô phỏng/i });
     if (pause) fireEvent.click(pause);
     const slider = screen.getByRole('slider', { name: /tua thời gian mô phỏng/i });
+    const rcdTime = clearanceSpy.mock.calls[0][1];
+    const tsat = clearanceSpy.mock.calls[0][3]!.tsat!;
+    const dayStart = new Date(rcdTime).setHours(0, 0, 0, 0);
+    const seek = (time: number) => fireEvent.change(slider, { target: { value: String((time - dayStart) / 60_000) } });
+    seek(rcdTime - 1);
+    expect(dclBoard).not.toHaveTextContent('RCD VNA123');
+    expect(screen.queryByRole('button', { name: /VNA123, tàu đi/ })).not.toBeInTheDocument();
+    seek(rcdTime);
+    expect(dclBoard).toHaveTextContent('RCD VNA123');
+    expect(screen.getByRole('button', { name: /VNA123, tàu đi/ })).toBeInTheDocument();
+    expect(screen.getByText('TỔNG THỜI GIAN CHỜ').closest('article')?.querySelector('.kpi-value')).toHaveTextContent('0 phút');
+    seek(tsat + 2 * 60_000);
+    expect(screen.getByText('TỔNG THỜI GIAN CHỜ').closest('article')?.querySelector('.kpi-value')).not.toHaveTextContent(/^0 phút$/);
     fireEvent.change(slider, { target: { value: '0' } });
     expect(screen.getByText('TỔNG THỜI GIAN CHỜ').closest('article')?.querySelector('.kpi-value')).toHaveTextContent('0 phút');
     const rain = screen.getByRole('switch', { name: 'Thời tiết xấu' });

@@ -72,6 +72,7 @@ describe('calibrated surface traffic', () => {
     }
     for (const arrival of plan.arrivals) for (const departure of plan.flights) {
       expect(arrival.crossingEnd <= departure.runwayEntryStart || arrival.crossingStart >= departure.wheelsOff).toBe(true);
+      expect(departure.runwayEntryStart < arrival.p5HoldAt || departure.runwayEntryStart >= arrival.crossingEnd).toBe(true);
       expect(departure.takeoffRollStart < arrival.approachStart || departure.takeoffRollStart >= arrivalThresholdClearAt(arrival)).toBe(true);
     }
     const all = [...plan.flights, ...plan.arrivals];

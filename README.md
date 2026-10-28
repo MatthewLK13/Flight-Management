@@ -53,7 +53,7 @@ Các quy tắc dưới đây mô tả **mô hình đang được cài đặt tro
 | **Hạ cánh — ARR** | Tiếp cận 25R → hạ cánh → nhánh thoát P4/P5 → điểm chờ P5 → cắt 25L → S8 → đường lăn V → stand |
 
 - Tàu đến ưu tiên **P4**; sử dụng **P5** khi tuyến ưu tiên không khả dụng.
-- Tàu đến phải chờ tại P5 nếu việc cắt 25L xung đột với lượt khởi hành.
+- Tàu đến chờ tại P5 nếu 25L đang có tàu đi. Sau khi tàu đi hiện tại rời đường băng và đủ thời gian giãn cách, tàu đến được ưu tiên cắt 25L; tàu đi kế tiếp phải chờ. Lịch đường lăn được tính lại quanh lượt cắt để giữ phân cách tại các đường chung và stand.
 - Khi tàu đến đang trong đoạn tiếp cận được theo dõi, tàu đi chỉ được **bắt đầu chạy đà sau khi tàu đến vượt mốc 25R** trên chart. Tàu đi có thể vào 25L và chờ tại đó.
 - Nhánh thoát P4/P5, điểm chờ và đường cong S8 → V được căn theo ảnh `PARKING_CHART_clean.png`, trong hệ tọa độ gốc **2048 × 1413**.
 - Chuyến nội địa được phân bổ vào nhóm stand **DOM PAX TERMINAL/T3**; chuyến quốc tế vào nhóm stand **INTL PAX TERMINAL**. **Stand 16 thuộc khu quốc tế.**
@@ -98,25 +98,26 @@ CTOT − 5 phút ≤ thời điểm cất cánh ≤ CTOT + 10 phút
 | Đã lăn, chưa qua điểm X | Bố trí quay về vị trí đỗ khả dụng gần nhất và chờ cấp lịch mới |
 | Đã qua điểm X | Được tiếp tục khởi hành, đánh dấu **Không tuân thủ CTOT** và xử lý **CTOT mới** |
 
-Điều chỉnh được phân biệt theo vị trí: ở stand sử dụng **Revised TSAT**; khi đã ở ngoài sân đỗ sử dụng **Revised CTOT**. CTOT gốc được giữ làm mốc tính độ trễ.
+Điều chỉnh được phân biệt theo vị trí: ở stand sử dụng **Revised TSAT**; khi đã ở ngoài sân đỗ sử dụng **Revised CTOT**. CTOT gốc được giữ để kiểm tra việc tuân thủ cửa sổ cất cánh.
 
 ### Cách tính tổng thời gian chờ
 
-Chỉ số **TỔNG THỜI GIAN CHỜ** phản ánh tổng độ trễ do vi phạm CTOT của các chuyến **đã thực sự cất cánh tại thời điểm phát lại**.
+Chỉ số **TỔNG THỜI GIAN CHỜ** cộng thời gian từ **TSAT mới nhất đã được cấp** đến lúc cất cánh thực tế của từng chuyến. Trong lúc phát lại, chuyến chưa cất cánh được tính đến thời điểm hiện tại.
 
 ```text
-Cất cánh trong cửa sổ CTOT:
-    Độ trễ chuyến = 0
+Trước TSAT:
+    Thời gian chờ chuyến = 0
 
-Cất cánh sau CTOT gốc + 10 phút:
-    Độ trễ chuyến = ATD − CTOT gốc
+Từ TSAT đến khi cất cánh:
+    Thời gian chờ chuyến = thời điểm hiện tại − TSAT mới nhất
 
-Tổng thời gian chờ = tổng độ trễ các chuyến đã cất cánh
+Sau khi cất cánh:
+    Thời gian chờ chuyến = ATD − TSAT mới nhất
 ```
 
-Ví dụ: CTOT gốc **10:12**, sau khi cấp lại lịch tàu thực sự cất cánh lúc **10:40** thì độ trễ là **28 phút**. Chuyến có CTOT **10:15** và cất cánh lúc **10:20** có độ trễ **0 phút** vì nằm trong cửa sổ cho phép.
+Ví dụ: RCD phát lúc **10:00**, TSAT **10:10**, cất cánh lúc **10:20** thì thời gian chờ là **10 phút**. Tàu xuất hiện tại stand ngay khi phát RCD; giai đoạn **10:00–10:10** chưa được cộng vào bộ đếm.
 
-Thời gian lăn và thời gian phát lại từ đầu ngày không được cộng trực tiếp vào chỉ số này. Chuyến còn chờ hoặc chưa xuất hiện chưa đóng góp vào tổng độ trễ thực hiện.
+Khi cấp **Revised TSAT**, bộ đếm sử dụng mốc mới từ thời điểm cấp và bằng 0 nếu chưa tới TSAT đó. Nếu chỉ cấp **Revised CTOT**, TSAT đang áp dụng được giữ làm mốc. Trạng thái tuân thủ CTOT được kiểm tra riêng với cửa sổ −5/+10 phút.
 
 ### Thời tiết xấu thủ công
 
